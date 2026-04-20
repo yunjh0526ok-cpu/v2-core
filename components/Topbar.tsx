@@ -68,7 +68,7 @@ export default function Topbar() {
             className="group min-w-0 rounded-xl px-2 py-1 transition-all hover:bg-white/[0.03]"
           >
             <p className="text-[10px] font-black uppercase tracking-[0.2em] md:text-[11px]">
-              <span className="accent-text">v2-core Platform</span>
+              <span className="accent-text">LexGuard.kr</span>
             </p>
             <h1 className="truncate text-base font-black text-white md:text-xl break-keep">
               {meta.title}

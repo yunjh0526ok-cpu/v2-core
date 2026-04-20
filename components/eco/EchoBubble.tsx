@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageCircle, Sparkles } from "lucide-react";
+import { MessageCircle, Sparkles, Download } from "lucide-react";
 import EchoMascot from "./EchoMascot";
+import PwaInstallPrompt from "./PwaInstallPrompt";
 
 /**
  *  EchoBubble — 사이드바 로봇 위의 '동적 말풍선'.
@@ -85,6 +86,7 @@ function useTypewriterRotation(lines: typeof LINES) {
 
 export default function EchoBubble() {
   const { line, typed, visible } = useTypewriterRotation(LINES);
+  const [showInstall, setShowInstall] = useState(false);
 
   const open = () => {
     if (typeof window === "undefined") return;
@@ -165,6 +167,25 @@ export default function EchoBubble() {
           </p>
         </div>
       </button>
+
+      {/* 앱 설치 버튼 */}
+      {!showInstall && (
+        <button
+          type="button"
+          onClick={() => setShowInstall(true)}
+          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-[11px] font-bold text-violet-200 transition-all hover:bg-violet-500/20"
+        >
+          <Download className="h-3.5 w-3.5" />
+          웹·앱 설치하기
+        </button>
+      )}
+
+      {/* 설치 팝업 */}
+      {showInstall && (
+        <div className="mt-2 w-full">
+          <PwaInstallPrompt onDismiss={() => setShowInstall(false)} />
+        </div>
+      )}
     </div>
   );
 }

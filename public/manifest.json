@@ -1,0 +1,41 @@
+{
+  "name": "LexGuard.kr — AI 법률자문 플랫폼",
+  "short_name": "LexGuard",
+  "description": "공직자·기관 전용 AI 법률자문 플랫폼. 국가법령 + 판례 기반 리스크 진단.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#050c1a",
+  "theme_color": "#0ea5e9",
+  "lang": "ko",
+  "categories": ["legal", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "법령 분석 시작",
+      "short_name": "Legal-Guide",
+      "url": "/legal-guide",
+      "description": "AI 법령 분석 및 리스크 진단"
+    },
+    {
+      "name": "커리큘럼 신청",
+      "short_name": "신청",
+      "url": "/apply",
+      "description": "기관 맞춤형 커리큘럼 AI 신청"
+    }
+  ]
+}

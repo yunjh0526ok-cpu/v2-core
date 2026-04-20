@@ -50,9 +50,9 @@ export default function Sidebar() {
         </div>
         <div>
           <p className="text-sm font-black tracking-wide text-white">
-            Ethics-Core AI
+            LexGuard.kr
           </p>
-          <p className="accent-text text-[11px]">청렴공정 AI 센터 · 2.0</p>
+          <p className="accent-text text-[11px]">AI 법률자문 플랫폼 · v2.0</p>
         </div>
       </Link>
 

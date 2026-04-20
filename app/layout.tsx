@@ -14,9 +14,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ethics-Core AI 2.0 — v2-core Platform",
+  title: "LexGuard.kr — AI 법률자문 플랫폼",
   description:
-    "공익형 부패 리스크 AI 비서 + 기관용 청렴도 SaaS. Legal-Guide / Dialogue / Intelligence Hub 통합 플랫폼.",
+    "공직자·기관 전용 AI 법률자문 플랫폼. 국가법령 API + 판례 기반 리스크 진단 · Legal-Guide · Intelligence Hub · 청렴도 SaaS.",
+  manifest: "/manifest.json",
+  themeColor: "#0ea5e9",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "LexGuard",
+  },
+  openGraph: {
+    title: "LexGuard.kr — AI 법률자문 플랫폼",
+    description: "공직자·기관 전용 AI 법률자문 플랫폼",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

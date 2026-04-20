@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, X, MessageCircle, Loader2, Scale, Sparkles, Home } from "lucide-react";
+import { Send, X, MessageCircle, Loader2, Scale, Sparkles, Home, Download } from "lucide-react";
 import Link from "next/link";
 import EchoMascot from "./EchoMascot";
+import PwaInstallPrompt from "./PwaInstallPrompt";
 
 /**
  *  EchoFloatingChat — 우측 하단 고정 실시간 팩트 체크 상담창
@@ -43,6 +44,7 @@ export default function EchoFloatingChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showInstall, setShowInstall] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -291,6 +293,27 @@ export default function EchoFloatingChat() {
         {error && (
           <div className="border-t border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-[11px] text-rose-200">
             {error}
+          </div>
+        )}
+
+        {/* PWA 설치 팝업 배너 */}
+        {showInstall && (
+          <div className="border-t border-white/10 px-3 py-3">
+            <PwaInstallPrompt onDismiss={() => setShowInstall(false)} />
+          </div>
+        )}
+
+        {/* 앱 설치 토글 버튼 (하단 인풋 옆) */}
+        {!showInstall && (
+          <div className="flex justify-center border-t border-white/5 py-1.5">
+            <button
+              type="button"
+              onClick={() => setShowInstall(true)}
+              className="flex items-center gap-1.5 rounded-full border border-sky-300/25 bg-sky-500/8 px-3 py-1 text-[10.5px] font-bold text-sky-300 hover:bg-sky-500/15 transition-colors"
+            >
+              <Download className="h-3 w-3" />
+              LexGuard 앱으로 설치하기
+            </button>
           </div>
         )}
 
