@@ -1,0 +1,103 @@
+// Ethics-Core AI 2.0 · v2-core
+// SQLite for local dev, easily swappable to Postgres (Neon/Supabase) on deploy.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")  // Neon/Vercel Postgres pooling 대응
+}
+
+/// Smart Application submissions (/apply)
+model Application {
+  id                  String   @id @default(cuid())
+  mode                String   // "lecture" | "partnership"
+  institutionName     String
+  contactName         String
+  contactEmail        String
+  orgScale            String?
+  participants        String?
+  preferredDate       String?
+  location            String?
+  selectedRisks       String   // JSON string[] — risk tag ids
+  goal                String?
+  partnershipPurposes String?  // JSON string[]
+  timeline            String?
+  riskScore           Int      @default(0)
+  priorityRiskId      String?
+  status              String   @default("received") // received | reviewing | confirmed
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([mode])
+}
+
+/// Legal-Guide 상담 기록  — Hub 진단 리포트의 원천 데이터
+model Consultation {
+  id              String   @id @default(cuid())
+  prompt          String
+  scenario        String   // cheongtak | ihae | gabjil | contract | retire | info | generic
+  riskScore       Int
+  riskLevel       String   // LOW | MEDIUM | HIGH | CRITICAL
+  summary         String
+  narrative       String?  // Gemini 자연어 해설
+  citations       String   // JSON [{statute, clause, excerpt?}]
+  recommendations String   // JSON string[]
+  keyIssues       String?  // JSON string[]
+  factors         String   // JSON [{label,delta,detail}]
+  relatedLaws     String   // JSON [{id,name,abbr,...}]
+  engine          String   @default("rules-only") // rules-only | gemini+rules
+  confidence      String   @default("medium")
+  department      String?  // 기관/부서 분류 (옵션)
+  userTag         String?  // 익명 세션 태그
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([scenario])
+  @@index([riskLevel])
+}
+
+/// Dialogue 현장 토론 의견/피드백 — Hub 리포트에도 반영
+model DialogueFeedback {
+  id         String   @id @default(cuid())
+  sessionId  String                // 현장 세션 식별자 (임의 문자열)
+  kind       String                // "vote" | "comment" | "sentiment"
+  text       String?
+  optionId   String?
+  sentiment  String?               // positive | neutral | concern | negative
+  topic      String?
+  createdAt  DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+}
+
+/// Ethics-Drama (/stories) 판례 드라마 카드뉴스
+model Story {
+  id                   String   @id @default(cuid())
+  slug                 String   @unique
+  title                String   // 예: "커피 한 잔이 정직 3개월이 된 사연"
+  hook                 String   // 한 줄 훅 카피
+  category             String   // 청탁 | 갑질 | 이해충돌 | 예산·계약 | 인사·채용 | 정보보안
+  heroEmoji            String   @default("⚖️")
+  stageStart           String   // 사건의 발단
+  stageConflict        String   // 갈등
+  stageFall            String   // 파멸(징계 결과)
+  outcome              String   // 실제 판례 결과 요약
+  lawRefs              String   // JSON [{statute, clause, url?}]
+  quizQuestion         String
+  quizOptions          String   // JSON [{id,label,alignment 0-100,commentary}]
+  quizCorrectOptionId  String
+  disciplineStats      String   // JSON [{type:"견책",count:number}, ...]
+  authorNote           String?  // 강사 코멘트
+  published            Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([category])
+  @@index([createdAt])
+}

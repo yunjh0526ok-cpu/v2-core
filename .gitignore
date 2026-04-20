@@ -1,6 +1,6 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
+# ─── dependencies ───────────────────────────────────────────────────────
 /node_modules
 /.pnp
 .pnp.*
@@ -10,32 +10,78 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
+# ─── testing ────────────────────────────────────────────────────────────
 /coverage
 
-# next.js
+# ─── Next.js ────────────────────────────────────────────────────────────
 /.next/
 /out/
 
-# production
+# ─── production build ───────────────────────────────────────────────────
 /build
+/dist
 
-# misc
+# ─── misc ───────────────────────────────────────────────────────────────
 .DS_Store
-*.pem
+Thumbs.db
 
-# debug
+# ─── debug logs ─────────────────────────────────────────────────────────
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# ═══════════════════════════════════════════════════════════════════════
+#  🔐 SECRETS — NEVER COMMIT
+# ═══════════════════════════════════════════════════════════════════════
+# 모든 .env / .env.local / .env.production 등 변종을 전부 차단
+.env
+.env.*
+# 단, 템플릿(*.example) 과 sample/public 은 공유 가능하므로 화이트리스트
+!.env.example
+!.env.*.example
+!.env*.example
 
-# vercel
+# 인증서/키/자격증명 파일 전부 차단
+*.pem
+*.key
+*.pfx
+*.cer
+*.crt
+*.p12
+id_rsa
+id_rsa.*
+*.gpg
+secrets.json
+secrets.yml
+secrets.yaml
+credentials.json
+credentials.yml
+service-account*.json
+google-credentials*.json
+firebase-adminsdk*.json
+
+# ═══════════════════════════════════════════════════════════════════════
+#  🗄  로컬 데이터베이스 (SQLite) — 개인정보/운영 데이터 보호
+# ═══════════════════════════════════════════════════════════════════════
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+/prisma/*.db*
+
+# ─── Vercel ─────────────────────────────────────────────────────────────
 .vercel
 
-# typescript
+# ─── TypeScript ─────────────────────────────────────────────────────────
 *.tsbuildinfo
 next-env.d.ts
+
+# ─── auto-generated prisma client ───────────────────────────────────────
+/lib/generated/prisma
+
+# ─── IDE / editor ───────────────────────────────────────────────────────
+.vscode/*
+!.vscode/settings.sample.json
+.idea/
