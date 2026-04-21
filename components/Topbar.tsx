@@ -6,8 +6,8 @@ import { Bell, Menu, Search, ShieldAlert } from "lucide-react";
 
 const TITLES: Record<string, { title: string; sub: string }> = {
   "/": {
-    title: "Command Dashboard",
-    sub: "3대 핵심 솔루션 · 실시간 리스크 모니터링",
+    title: "LexGuard Home",
+    sub: "AI 법률자문 플랫폼 · 핵심 기능 빠른 진입",
   },
   "/legal-guide": {
     title: "Legal-Guide",

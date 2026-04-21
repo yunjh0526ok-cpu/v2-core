@@ -15,8 +15,13 @@ export async function generateMetadata({
   params: Promise<Params>;
 }) {
   const { slug } = await params;
-  const story = await prisma.story.findUnique({ where: { slug } });
-  if (!story) return { title: "Ethics-Drama · Ethics-Core AI 2.0" };
+  let story: Awaited<ReturnType<typeof prisma.story.findUnique>> = null;
+  try {
+    story = await prisma.story.findUnique({ where: { slug } });
+  } catch (error) {
+    console.error("[stories/slug] metadata load failed:", error);
+  }
+  if (!story) return { title: "Ethics-Drama · LexGuard.kr" };
   return {
     title: `${story.title} · Ethics-Drama`,
     description: story.hook,
@@ -29,7 +34,12 @@ export default async function StoryPage({
   params: Promise<Params>;
 }) {
   const { slug } = await params;
-  const row = await prisma.story.findUnique({ where: { slug } });
+  let row: Awaited<ReturnType<typeof prisma.story.findUnique>> = null;
+  try {
+    row = await prisma.story.findUnique({ where: { slug } });
+  } catch (error) {
+    console.error("[stories/slug] page load failed:", error);
+  }
   if (!row || !row.published) notFound();
   const story = serializeStory(row);
 

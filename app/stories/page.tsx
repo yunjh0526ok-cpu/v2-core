@@ -32,7 +32,7 @@ function dedupLawTags(
 }
 
 export const metadata = {
-  title: "Ethics-Drama · Ethics-Core AI 2.0",
+  title: "Ethics-Drama · LexGuard.kr",
   description:
     "국가법령·실제 판례 기반 9편 킬러 스토리 + 실시간 드라마 분석기. 그 선택의 순간을 함께 경험하세요.",
 };
@@ -40,10 +40,15 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function StoriesIndexPage() {
-  const rows = await prisma.story.findMany({
-    where: { published: true },
-    orderBy: { createdAt: "desc" },
-  });
+  let rows: Awaited<ReturnType<typeof prisma.story.findMany>> = [];
+  try {
+    rows = await prisma.story.findMany({
+      where: { published: true },
+      orderBy: { createdAt: "desc" },
+    });
+  } catch (error) {
+    console.error("[stories] failed to load stories:", error);
+  }
   const stories = rows.map(serializeStory);
 
   return (
