@@ -70,6 +70,13 @@ export default function EchoFloatingChat() {
     }
   }, [open]);
 
+  // 전역 위젯(예: 설치 배너)과 충돌 방지를 위해 채팅 열림 상태 브로드캐스트
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("eco:state", { detail: { open } })
+    );
+  }, [open]);
+
   const send = useCallback(
     async (raw?: string) => {
       const text = (raw ?? input).trim();

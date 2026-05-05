@@ -90,3 +90,58 @@ export function serializeStory(row: StoryRow): StoryDTO {
     updatedAt: row.updatedAt.toISOString(),
   };
 }
+
+/** Bundled seed row (e.g. `lib/ethicsDramaSeedData`) — same narrative fields as DB row, no id/dates. */
+export type StorySeedFields = Omit<
+  StoryDTO,
+  "id" | "published" | "createdAt" | "updatedAt" | "authorNote"
+> & { authorNote?: string | null };
+
+const SEED_FALLBACK_TIMESTAMP = "2024-01-15T00:00:00.000Z";
+
+export function storySeedToDTO(seed: StorySeedFields): StoryDTO {
+  return {
+    id: `seed:${seed.slug}`,
+    slug: seed.slug,
+    title: seed.title,
+    hook: seed.hook,
+    category: seed.category,
+    heroEmoji: seed.heroEmoji,
+    stageStart: seed.stageStart,
+    stageConflict: seed.stageConflict,
+    stageFall: seed.stageFall,
+    outcome: seed.outcome,
+    lawRefs: Array.isArray(seed.lawRefs) ? seed.lawRefs : [],
+    quizQuestion: seed.quizQuestion,
+    quizOptions: Array.isArray(seed.quizOptions) ? seed.quizOptions : [],
+    quizCorrectOptionId: seed.quizCorrectOptionId,
+    disciplineStats: Array.isArray(seed.disciplineStats)
+      ? seed.disciplineStats
+      : [],
+    authorNote: seed.authorNote ?? null,
+    published: true,
+    createdAt: SEED_FALLBACK_TIMESTAMP,
+    updatedAt: SEED_FALLBACK_TIMESTAMP,
+  };
+}
+
+export function storySeedsToDTOs(seeds: StorySeedFields[]): StoryDTO[] {
+  return seeds.map(storySeedToDTO);
+}
+
+/** DB 행과 번들 시드를 slug 기준 병합: 동일 slug는 DB가 우선, 시드 순서로 9편을 앞에 고정. */
+export function mergePublishedStoriesWithSeeds(
+  dbRows: StoryDTO[],
+  seeds: StorySeedFields[]
+): StoryDTO[] {
+  const fromSeeds = storySeedsToDTOs(seeds);
+  const bySlug = new Map<string, StoryDTO>();
+  for (const s of fromSeeds) bySlug.set(s.slug, s);
+  for (const r of dbRows) bySlug.set(r.slug, r);
+  const order = seeds.map((s) => s.slug);
+  const ordered = order
+    .map((slug) => bySlug.get(slug))
+    .filter((x): x is StoryDTO => Boolean(x));
+  const extras = dbRows.filter((r) => !order.includes(r.slug));
+  return [...ordered, ...extras];
+}

@@ -175,6 +175,240 @@ function normalizeLawSearchXml(q: string, parsed: unknown): LawSearchResponse {
   };
 }
 
+export type PrecedentSearchItem = {
+  id: string;
+  title: string;
+  court?: string;
+  date?: string;
+  caseNo?: string;
+  gist?: string;
+};
+
+export type RelevantPrecedent = {
+  caseNo: string;
+  date: string;
+  court: string;
+  gist: string;
+  outcome: "승소" | "패소";
+  outcomeKeyword: string;
+};
+
+/** 판례 목록 검색 (lawSearch.do · target=prec) */
+export async function searchPrecedents(
+  query: string,
+  display = 5
+): Promise<PrecedentSearchItem[]> {
+  logKeyOnce();
+  const q = query.trim().slice(0, 120);
+  if (!q) return [];
+  const apiKey = getApiKey();
+  if (!apiKey) return [];
+
+  const url =
+    `${getBaseUrl()}/lawSearch.do` +
+    `?OC=${encodeURIComponent(apiKey)}` +
+    `&target=prec` +
+    `&type=XML` +
+    `&query=${encodeURIComponent(q)}` +
+    `&display=${String(Math.min(30, Math.max(1, display)))}`;
+
+  try {
+    const res = await fetch(url, {
+      next: { revalidate: 3600 },
+      headers: { Accept: "application/xml,text/xml,*/*" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    if (!/^<\??xml|^<PrecSearch/i.test(text.trim())) {
+      throw new Error("non-XML precedent response");
+    }
+    return normalizePrecSearchXml(xmlParser.parse(text));
+  } catch (err) {
+    console.warn(
+      "[law-api] searchPrecedents failed:",
+      (err as Error).message
+    );
+    return [];
+  }
+}
+
+function normalizePrecSearchXml(parsed: unknown): PrecedentSearchItem[] {
+  const root =
+    (parsed as { PrecSearch?: Record<string, unknown> }).PrecSearch ?? {};
+  const rawList = Array.isArray(root.prec)
+    ? (root.prec as Record<string, unknown>[])
+    : [];
+  return rawList.map((r, i) => ({
+    id: String(r["판례일련번호"] ?? r["판례ID"] ?? `p-${i}`),
+    title: String(r["사건명"] ?? r["판례명"] ?? r["판례제목"] ?? "판례"),
+    court: r["법원명"] ? String(r["법원명"]) : undefined,
+    date: r["선고일자"] ? String(r["선고일자"]) : undefined,
+    caseNo: r["사건번호"] ? String(r["사건번호"]) : undefined,
+    gist: String(
+      r["판결요지"] ?? r["판시사항"] ?? r["판례내용"] ?? ""
+    )
+      .replace(/\s+/g, " ")
+      .slice(0, 320),
+  }));
+}
+
+function detectOutcome(
+  text: string
+): { outcome: "승소" | "패소"; keyword: string } {
+  const wonPatterns = [
+    "원고승",
+    "승소",
+    "인용",
+    "파기환송",
+    "청구인용",
+    "일부인용",
+    "무죄",
+  ];
+  for (const k of wonPatterns) {
+    if (text.includes(k)) return { outcome: "승소", keyword: k };
+  }
+  const lostPatterns = [
+    "패소",
+    "기각",
+    "각하",
+    "원고패",
+    "청구기각",
+    "유죄",
+    "상고기각",
+  ];
+  for (const k of lostPatterns) {
+    if (text.includes(k)) return { outcome: "패소", keyword: k };
+  }
+  // 명시 신호가 없으면 보수적으로 패소 쪽으로 분류
+  return { outcome: "패소", keyword: "판단문구미확인" };
+}
+
+/**
+ * 사용자 질문 기반 판례 검색 (target=prec) 후
+ * 승소/패소 각각 최대 2건(총 최대 4건)으로 정리.
+ * 실패 시 빈 배열 반환 (graceful fallback).
+ */
+export async function searchRelevantPrecedents(
+  userText: string
+): Promise<RelevantPrecedent[]> {
+  try {
+    const { precQuery } = extractLegalKeywords(userText);
+    const rows = await searchPrecedents(precQuery, 12);
+    if (!rows.length) return [];
+
+    const won: RelevantPrecedent[] = [];
+    const lost: RelevantPrecedent[] = [];
+
+    for (const r of rows) {
+      const merged = `${r.title} ${r.gist ?? ""}`.replace(/\s+/g, " ");
+      const out = detectOutcome(merged);
+      const item: RelevantPrecedent = {
+        caseNo: r.caseNo || "사건번호 미상",
+        date: r.date || "판결일 미상",
+        court: r.court || "법원명 미상",
+        gist: (r.gist || r.title || "판결 요지 정보 없음").slice(0, 160),
+        outcome: out.outcome,
+        outcomeKeyword: out.keyword,
+      };
+      if (item.outcome === "승소") {
+        if (won.length < 2) won.push(item);
+      } else if (lost.length < 2) {
+        lost.push(item);
+      }
+      if (won.length >= 2 && lost.length >= 2) break;
+    }
+
+    return [...won, ...lost].slice(0, 4);
+  } catch (err) {
+    console.warn(
+      "[law-api] searchRelevantPrecedents failed:",
+      (err as Error).message
+    );
+    return [];
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ *  2-b. 범용 검색어 추출 — 시나리오·카테고리 분기 없이 질문에서 API 쿼리 생성
+ *      (기존 classifyScenario / analyzeRisk 분기는 그대로 두고 병행·fallback 용)
+ * ══════════════════════════════════════════════════════════════════════ */
+
+export type ExtractedLegalKeywords = {
+  /** lawSearch.do?target=law */
+  lawQuery: string;
+  /** lawSearch.do?target=prec */
+  precQuery: string;
+  tokens: string[];
+};
+
+/**
+ * 사용자 자연어에서 국가법령정보 Open API 검색어를 추출한다.
+ * analyzeRisk 가 특정 키워드에만 맞지 않을 때 fallback 검색에 사용한다.
+ */
+export function extractLegalKeywords(userText: string): ExtractedLegalKeywords {
+  const cleaned = userText.replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!cleaned) {
+    return { lawQuery: "민법", precQuery: "민법", tokens: [] };
+  }
+  const filler =
+    /^(저는|저희|제가|혹시|질문입니다|문의드|여쭤|알고\s*싶|궁금합니다|도와)/i;
+  let q = cleaned.replace(filler, "").trim() || cleaned;
+  const stop = new Set([
+    "하는데",
+    "있는데",
+    "경우에",
+    "있을까",
+    "있나요",
+    "되나요",
+    "될까요",
+    "인가요",
+    "맞나요",
+  ]);
+  const tokens = q
+    .split(/[\s,.;，。!?？]+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter(
+      (w) =>
+        w.length >= 2 &&
+        !stop.has(w) &&
+        !/^(그냥|정말|진짜|매우|너무|좀|만)$/.test(w)
+    );
+  const core =
+    tokens.length >= 2 ? tokens.slice(0, 8).join(" ") : q.slice(0, 80).trim();
+  const lawQuery = (core || "민법").slice(0, 100);
+  const precQuery =
+    `${lawQuery} ${tokens.slice(0, 3).join(" ")}`
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 120) || lawQuery;
+  return { lawQuery, precQuery, tokens };
+}
+
+/**
+ * 추출 키워드로 법령 검색 — 1차 쿼리 결과가 비면 precQuery 로 재시도.
+ */
+export async function searchLawsWithKeywordFallback(
+  userText: string
+): Promise<LawSearchResponse> {
+  try {
+    const { lawQuery, precQuery } = extractLegalKeywords(userText);
+    let res = await searchLaws(lawQuery);
+    if (res.items.length > 0) return res;
+    if (precQuery !== lawQuery) {
+      res = await searchLaws(precQuery);
+    }
+    return res;
+  } catch {
+    return {
+      query: "",
+      totalCnt: 0,
+      items: [],
+      mocked: true,
+      source: "empty-query",
+    };
+  }
+}
+
 /* ══════════════════════════════════════════════════════════════════════
  *  3. 법령 본문(조문) 조회 — lawService.do
  * ══════════════════════════════════════════════════════════════════════ */
@@ -544,26 +778,75 @@ export type RiskAnalysis = {
 type Scenario =
   | "cheongtak"       // 청탁·금품
   | "ihae"            // 이해충돌
+  | "labor"           // 임금·해고 등 근로
   | "gabjil"          // 갑질·괴롭힘
   | "contract"        // 계약·입찰
   | "retire"          // 퇴직·재취업
   | "info"            // 정보유출
+  | "civil"           // 민사·계약 일반
+  | "criminal"        // 형사
+  | "consumer"        // 소비자
+  | "family"          // 가족법
+  | "tax"             // 조세
+  | "traffic"         // 교통
+  | "ip"              // 지식재산
+  | "admin"           // 행정·소송
   | "generic";
 
 const SCENARIO_PATTERNS: Array<{ id: Scenario; rx: RegExp; query: string }> = [
   { id: "cheongtak", rx: /청탁|금품|선물|식사|접대|떡값|상품권|골프|명절|봉투|현금|기프티콘/, query: "청탁금지법" },
   { id: "ihae",      rx: /이해충돌|사적이해|가족|친족|배우자|4촌|직계|부동산|주식|매도|매수|동생|자녀|부모|형제|인허가|허가.?업무/, query: "이해충돌방지법" },
+  { id: "labor",     rx: /퇴직금|임금체불|임금|연차|유급휴가|야근|수당|실업급여|고용보험|산재|산재보험|부당해고|해고예고|취업규칙|노동|근로자|사용자/, query: "근로기준법" },
   { id: "gabjil",    rx: /갑질|괴롭힘|사적.?심부름|폭언|폭행|모욕|주말근무|심부름|과중/, query: "근로기준법" },
   { id: "contract",  rx: /계약|입찰|수의|발주|공사|조달|납품|하도급/, query: "국가계약법" },
   { id: "retire",    rx: /퇴직|재취업|이직|영리업무|겸직/, query: "공직자윤리법" },
   { id: "info",      rx: /유출|내부정보|비공개|자료.?제공|문서.?반출|복사.?제공/, query: "공공기록물 관리법" },
+  { id: "civil",     rx: /민법|불법행위|손해배상|계약\s*해제|계약\s*해지|채권|채무|매매|임대차|전세|월세|소유권|유치권|임차인|명예훼손|모욕|대항력|보증금/, query: "민법" },
+  { id: "criminal",  rx: /형법|사기|횡령|배임|성추행|강제추행|협박|살인|절도|무고|모해|성폭력/, query: "형법" },
+  { id: "consumer",  rx: /소비자|청약\s*철회|통신판매|전자상거래|할부|환불|품질보증|불공정거래/, query: "소비자기본법" },
+  { id: "family",    rx: /이혼|친양자|친생자|상속|유언|혼인|양육|양육권|친권/, query: "민법" },
+  { id: "tax",       rx: /세금|국세|지방세|과세|종합소득|부가세|양도소득|가산세|징수유예|세무/, query: "국세기본법" },
+  { id: "traffic",   rx: /교통|도로교통|음주운전|무면허|과속|신호위반/, query: "도로교통법" },
+  { id: "ip",        rx: /저작권|특허|상표|부정\s*경쟁|영업비밀|침해금지/, query: "저작권법" },
+  { id: "admin",     rx: /행정소송|행정처분|취소소송|무효\s*확인|이의신청|행정심판|과징금|과태료\s*부과/, query: "행정소송법" },
 ];
+
+/** 공직 윤리 외 일반 법률 질의도 lawSearch 가 인식할 수 있도록 검색어를 만든다. */
+function deriveLawSearchQuery(text: string): string {
+  const cleaned = text.replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!cleaned) return "민법";
+  const filler =
+    /^(저는|저희|제가|혹시|질문입니다|문의드|여쭤|알고\s*싶|궁금합니다|도와)/i;
+  let q = cleaned.replace(filler, "").trim() || cleaned;
+  const stop = new Set([
+    "하는데",
+    "있는데",
+    "경우에",
+    "있을까",
+    "있나요",
+    "되나요",
+    "될까요",
+    "인가요",
+    "맞나요",
+  ]);
+  const tokens = q
+    .split(/[\s,.;，。!?？]+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter(
+      (w) =>
+        w.length >= 2 &&
+        !stop.has(w) &&
+        !/^(그냥|정말|진짜|매우|너무|좀|만)$/.test(w)
+    );
+  if (tokens.length >= 2) return tokens.slice(0, 8).join(" ");
+  return q.slice(0, 80).trim() || "민법";
+}
 
 function classifyScenario(text: string): { scenario: Scenario; query: string } {
   for (const s of SCENARIO_PATTERNS) {
     if (s.rx.test(text)) return { scenario: s.id, query: s.query };
   }
-  return { scenario: "generic", query: "공무원 행동강령" };
+  return { scenario: "generic", query: deriveLawSearchQuery(text) };
 }
 
 /* ── 5-2. 자연어에서 양적 신호 추출 ──────────────────────────────────── */
@@ -701,9 +984,24 @@ export async function analyzeRisk(prompt: string): Promise<RiskAnalysis> {
 
   // 기준 점수(시나리오별 베이스라인)
   const base =
-    { cheongtak: 30, ihae: 28, gabjil: 32, contract: 24, retire: 18, info: 26, generic: 14 }[
-      scenario
-    ];
+    {
+      cheongtak: 30,
+      ihae: 28,
+      labor: 26,
+      gabjil: 32,
+      contract: 24,
+      retire: 18,
+      info: 26,
+      civil: 22,
+      criminal: 26,
+      consumer: 20,
+      family: 22,
+      tax: 22,
+      traffic: 22,
+      ip: 20,
+      admin: 24,
+      generic: 16,
+    }[scenario];
   factors.push({
     label: `시나리오 베이스라인(${scenario})`,
     delta: base,
@@ -738,7 +1036,7 @@ export async function analyzeRisk(prompt: string): Promise<RiskAnalysis> {
       detail: "평가/결재/감독 등 직무 직접 관련 어휘 감지",
     });
   }
-  if (sig.subordinate && scenario === "gabjil") {
+  if (sig.subordinate && (scenario === "gabjil" || scenario === "labor")) {
     factors.push({
       label: "권력 관계",
       delta: 10,
@@ -779,7 +1077,19 @@ export async function analyzeRisk(prompt: string): Promise<RiskAnalysis> {
     }
   }
 
-  // (5-b) 인용이 여전히 0이면 시나리오 기본 근거를 주입
+  // (5-b) 판례 검색 — 법령과 별도로 질의 기반 포괄 검색
+  const precQuery = `${query} ${deriveLawSearchQuery(text)}`.replace(/\s+/g, " ").trim().slice(0, 120);
+  const precedents = await searchPrecedents(precQuery, 5);
+  for (const p of precedents.slice(0, 2)) {
+    if (!p.title) continue;
+    citations.push({
+      statute: p.court ? `${p.court} 판례` : "판례",
+      clause: p.caseNo ? `${p.title} (${p.caseNo})` : p.title,
+      excerpt: p.gist ? truncate(p.gist, 160) : undefined,
+    });
+  }
+
+  // (5-c) 인용이 여전히 0이면 시나리오 기본 근거를 주입
   if (citations.length === 0) {
     const fb = fallbackCitation(scenario);
     if (fb) citations.push(fb);
@@ -826,10 +1136,19 @@ function pickMostRelevantArticle(
   const priorityByScenario: Record<Scenario, string[]> = {
     cheongtak: ["8", "22", "23"],
     ihae: ["5", "12", "27", "14"],
+    labor: ["23", "26", "36", "41"],
     gabjil: ["76", "116"],
     contract: ["27"],
     retire: ["17"],
     info: ["35"],
+    civil: [],
+    criminal: [],
+    consumer: [],
+    family: [],
+    tax: [],
+    traffic: [],
+    ip: [],
+    admin: [],
     generic: [],
   };
   const priority = priorityByScenario[scenario];
@@ -853,6 +1172,14 @@ function pickMostRelevantArticle(
     }
   }
   return best ?? articles[0];
+}
+
+/** 포괄 법률 질의(시나리오 미분류)용 — generic 우선순위 + 질의·조문 토큰 매칭 */
+export function pickMostRelevantArticlePublic(
+  articles: LawArticle[],
+  userText: string
+): LawArticle | null {
+  return pickMostRelevantArticle(articles, "generic", userText);
 }
 
 function tokenize(t: string): Set<string> {
@@ -909,6 +1236,20 @@ function defaultRecs(scenario: Scenario, sig: Signals): string[] {
       recs.push("접근 로그 보존 및 정보보호책임자 즉시 통보");
       recs.push("외부 제공 건은 정보공개 절차를 거쳤는지 확인");
       break;
+    case "civil":
+    case "criminal":
+    case "consumer":
+    case "family":
+    case "tax":
+    case "traffic":
+    case "ip":
+    case "admin":
+    case "labor":
+      recs.push(
+        "사실관계·일자·금액·증거자료를 정리한 뒤 law.go.kr 원문과 대조하세요."
+      );
+      recs.push("분쟁·수사·소송 단계에 따라 변호사 등 전문가 상담을 병행하세요.");
+      break;
     default:
       recs.push("소속기관 행동강령 및 공익신고자 보호 절차를 사전 점검");
   }
@@ -922,6 +1263,8 @@ function fallbackCitation(scenario: Scenario): RiskCitation | null {
       return { statute: "청탁금지법", clause: "제8조(금품등 수수 금지)" };
     case "ihae":
       return { statute: "이해충돌방지법", clause: "제5조(사적이해관계자 신고)" };
+    case "labor":
+      return { statute: "근로기준법", clause: "임금·해고 등 근로조건 관련 조항" };
     case "gabjil":
       return { statute: "근로기준법", clause: "제76조의2(직장 내 괴롭힘 금지)" };
     case "contract":
@@ -930,8 +1273,27 @@ function fallbackCitation(scenario: Scenario): RiskCitation | null {
       return { statute: "공직자윤리법", clause: "제17조(취업제한)" };
     case "info":
       return { statute: "공공기록물 관리법", clause: "제35조(비공개 정보 관리)" };
+    case "civil":
+      return { statute: "민법", clause: "불법행위·계약 등 일반원칙(조문 확인 필요)" };
+    case "criminal":
+      return { statute: "형법", clause: "각 죄 구성요건 관련 조항(조문 확인 필요)" };
+    case "consumer":
+      return { statute: "소비자기본법", clause: "소비자 권익 보호 일반" };
+    case "family":
+      return { statute: "민법", clause: "친족·상속 등 가족법 관련 조항" };
+    case "tax":
+      return { statute: "국세기본법", clause: "과세·납세 일반" };
+    case "traffic":
+      return { statute: "도로교통법", clause: "운전자 의무·처벌 관련 조항" };
+    case "ip":
+      return { statute: "저작권법", clause: "저작권·침해 관련 조항" };
+    case "admin":
+      return { statute: "행정소송법", clause: "취소·무효 등 구제 절차" };
     default:
-      return { statute: "국가공무원법", clause: "제63조(품위 유지의 의무)" };
+      return {
+        statute: "관련 법령",
+        clause: "질의에 맞는 법령·조문·판례를 law.go.kr에서 확인",
+      };
   }
 }
 
@@ -946,11 +1308,20 @@ function buildSummary(
     {
       cheongtak: "금품·청탁",
       ihae: "이해충돌",
+      labor: "근로·임금",
       gabjil: "직장 내 괴롭힘",
       contract: "계약·입찰",
       retire: "퇴직·재취업",
       info: "정보 관리",
-      generic: "일반 청렴",
+      civil: "민사·계약",
+      criminal: "형사",
+      consumer: "소비자",
+      family: "가족·상속",
+      tax: "조세",
+      traffic: "교통",
+      ip: "지식재산",
+      admin: "행정·소송",
+      generic: "일반 법률",
     }[scenario] || "일반";
 
   const top = citations[0];

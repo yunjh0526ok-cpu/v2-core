@@ -15,9 +15,10 @@ import { z } from "zod";
 import {
   analyzeRisk,
   fetchLawDetail,
-  searchLaws,
+  searchLawsWithKeywordFallback,
   type LawArticle,
 } from "@/lib/law-api";
+import { runComprehensiveLegalEnrichmentFallback } from "@/lib/comprehensiveLegalEnrichment";
 import { deepDiagnose, enhanceRiskWithGemini } from "@/lib/gemini";
 import { prisma } from "@/lib/prisma";
 
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
   const started = Date.now();
 
   // 1) 규칙 엔진 1차
-  const base = await analyzeRisk(situation);
+  let base = await analyzeRisk(situation);
 
   // 2) 조문 컨텍스트 수집
   let articles: LawArticle[] = [];
@@ -86,10 +87,31 @@ export async function POST(req: Request) {
     }
   } else {
     try {
-      const s = await searchLaws(situation.slice(0, 40));
+      const s = await searchLawsWithKeywordFallback(situation);
       if (s.items[0]) {
         const d = await fetchLawDetail(s.items[0].mst ?? s.items[0].id, s.items[0].name);
         articles = d.articles.slice(0, 4);
+      }
+    } catch {
+      /* noop */
+    }
+  }
+
+  if (articles.length === 0) {
+    try {
+      const fb = await runComprehensiveLegalEnrichmentFallback(situation);
+      if (fb.context.citations.length > 0) {
+        base = {
+          ...base,
+          citations: [
+            ...base.citations,
+            ...fb.context.citations.map((c) => ({
+              statute: c.statute,
+              clause: c.clause,
+              excerpt: c.excerpt,
+            })),
+          ].slice(0, 15),
+        };
       }
     } catch {
       /* noop */

@@ -7,11 +7,15 @@ import { Bell, Menu, Search, ShieldAlert } from "lucide-react";
 const TITLES: Record<string, { title: string; sub: string }> = {
   "/": {
     title: "LexGuard Home",
-    sub: "AI 법률자문 플랫폼 · 핵심 기능 빠른 진입",
+    sub: "AI 법률 방어 플랫폼 · 핵심 기능 빠른 진입",
   },
   "/legal-guide": {
     title: "Legal-Guide",
     sub: "국가법령 API 연동 AI 법률 상담",
+  },
+  "/legal-defense-draft": {
+    title: "Legal-Defense-Draft",
+    sub: "소명·답변·변론 자동 초안 + 면책 논리 추천",
   },
   "/dialogue": {
     title: "Dialogue",
@@ -63,12 +67,12 @@ export default function Topbar() {
           </button>
 
           <Link
-            href="/"
-            aria-label="Ethics-Core AI 메인 대시보드(Home)"
+            href="https://lexguardai.vercel.app"
+            aria-label="LexGuardAI Vercel 프로덕션 홈"
             className="group min-w-0 rounded-xl px-2 py-1 transition-all hover:bg-white/[0.03]"
           >
             <p className="text-[10px] font-black uppercase tracking-[0.2em] md:text-[11px]">
-              <span className="accent-text">LexGuard.kr</span>
+              <span className="accent-text">lexguardai.vercel.app</span>
             </p>
             <h1 className="truncate text-base font-black text-white md:text-xl break-keep">
               {meta.title}

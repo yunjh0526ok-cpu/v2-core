@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { serializeStory, type LawRef } from "@/lib/story";
+import {
+  serializeStory,
+  mergePublishedStoriesWithSeeds,
+  type LawRef,
+} from "@/lib/story";
+import { ETHICS_DRAMA_STORY_SEEDS } from "@/lib/ethicsDramaSeedData";
 import { ArrowUpRight, BookOpen, Film, Sparkles } from "lucide-react";
 import DramaHeroTitle from "@/components/stories/DramaHeroTitle";
 import LiveDramaGenerator from "@/components/stories/LiveDramaGenerator";
@@ -32,7 +37,7 @@ function dedupLawTags(
 }
 
 export const metadata = {
-  title: "Ethics-Drama · LexGuard.kr",
+  title: "Ethics-Drama · lexguardai.vercel.app",
   description:
     "국가법령·실제 판례 기반 9편 킬러 스토리 + 실시간 드라마 분석기. 그 선택의 순간을 함께 경험하세요.",
 };
@@ -49,7 +54,10 @@ export default async function StoriesIndexPage() {
   } catch (error) {
     console.error("[stories] failed to load stories:", error);
   }
-  const stories = rows.map(serializeStory);
+  const stories = mergePublishedStoriesWithSeeds(
+    rows.map(serializeStory),
+    ETHICS_DRAMA_STORY_SEEDS
+  );
 
   return (
     <div className="space-y-6 md:space-y-8">

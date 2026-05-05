@@ -98,10 +98,10 @@ export default function StoryDetail({ story }: { story: StoryDTO }) {
               <p className="text-[11px] font-black uppercase tracking-[0.2em] text-orange-300">
                 Ethics-Drama · {story.category}
               </p>
-              <h1 className="mt-2 text-2xl font-black leading-snug text-white md:text-[32px]">
+              <h1 className="mt-2 text-3xl font-black leading-snug text-white md:text-[40px]">
                 {story.title}
               </h1>
-              <p className="mt-2 text-sm leading-relaxed text-steel-200">
+              <p className="mt-3 text-base leading-relaxed text-steel-100 md:text-[18px]">
                 {story.hook}
               </p>
             </div>
@@ -134,14 +134,14 @@ export default function StoryDetail({ story }: { story: StoryDTO }) {
         )}
 
         {stage === "quiz" && (
-          <div className="glass rounded-3xl p-5 md:p-7">
+          <div className="glass rounded-3xl p-6 md:p-8">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-orange-400" />
               <p className="text-[11px] font-black uppercase tracking-widest text-orange-300">
                 Dilemma Quiz · 당신의 선택은?
               </p>
             </div>
-            <h3 className="mt-3 text-lg font-black leading-snug text-white md:text-xl">
+            <h3 className="mt-3 text-xl font-black leading-snug text-white md:text-2xl">
               {story.quizQuestion}
             </h3>
 
@@ -174,15 +174,15 @@ export default function StoryDetail({ story }: { story: StoryDTO }) {
                       {active ? (isCorrect ? "✓" : "!") : "?"}
                     </span>
                     <div className="flex-1">
-                      <p className="text-sm font-bold text-white">
+                      <p className="text-base font-black text-white md:text-[18px]">
                         {o.label}
                       </p>
                       {active && (
-                        <div className="mt-2 space-y-2">
+                        <div className="mt-3 space-y-3">
                           <div className="flex items-center gap-2 text-[11px] font-bold">
                             <AlignmentBar alignment={o.alignment} />
                           </div>
-                          <p className="text-[12px] leading-relaxed text-steel-200">
+                          <p className="text-[14px] leading-relaxed text-steel-100 md:text-[15px]">
                             {o.commentary}
                           </p>
                         </div>
@@ -195,7 +195,7 @@ export default function StoryDetail({ story }: { story: StoryDTO }) {
 
             {picked && (
               <div
-                className={`mt-5 flex flex-col gap-3 rounded-2xl border p-4 text-xs md:flex-row md:items-center md:justify-between ${
+                className={`mt-5 flex flex-col gap-3 rounded-2xl border p-4 text-sm md:flex-row md:items-center md:justify-between ${
                   picked.id === story.quizCorrectOptionId
                     ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100"
                     : "border-rose-400/40 bg-rose-500/10 text-rose-100"
@@ -264,22 +264,22 @@ export default function StoryDetail({ story }: { story: StoryDTO }) {
         <div className="glass rounded-2xl p-5">
           <div className="mb-3 flex items-center gap-2">
             <Gavel className="h-4 w-4 text-orange-400" />
-            <p className="text-sm font-black text-white">근거 법령 · 조항</p>
+            <p className="text-base font-black text-white md:text-lg">근거 법령 · 조항</p>
           </div>
           <ul className="space-y-2">
             {story.lawRefs.map((l, i) => (
               <li
                 key={i}
-                className="rounded-xl border border-white/5 bg-navy-900/50 px-3 py-2 text-xs"
+                className="rounded-xl border border-white/5 bg-navy-900/50 px-4 py-3 text-sm"
               >
-                <p className="font-bold text-white">{l.statute}</p>
-                <p className="text-steel-300">{l.clause}</p>
+                <p className="font-black text-white md:text-[16px]">{l.statute}</p>
+                <p className="mt-1 text-steel-200 md:text-[15px]">{l.clause}</p>
                 {l.url && (
                   <a
                     href={l.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-1 inline-block text-[11px] font-bold text-orange-300 hover:underline"
+                    className="mt-2 inline-block text-xs font-black text-orange-300 hover:underline"
                   >
                     원문 보기 →
                   </a>
@@ -290,18 +290,18 @@ export default function StoryDetail({ story }: { story: StoryDTO }) {
         </div>
 
         {story.authorNote && (
-          <div className="glass-strong rounded-2xl p-5">
-            <p className="text-[11px] font-black uppercase tracking-widest text-orange-300">
+          <div className="glass-strong rounded-2xl p-6">
+            <p className="text-xs font-black uppercase tracking-widest text-orange-300">
               강사 코멘트
             </p>
-            <p className="mt-2 text-sm leading-relaxed text-steel-100">
+            <p className="mt-3 text-base leading-relaxed text-steel-100 md:text-[17px]">
               “{story.authorNote}”
             </p>
           </div>
         )}
 
         <div className="glass rounded-2xl p-5">
-          <p className="text-sm font-black text-white">읽기 진행도</p>
+          <p className="text-base font-black text-white">읽기 진행도</p>
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/5">
             <div
               className="h-full rounded-full bg-gradient-to-r from-navy-500 to-orange-400 transition-all"
@@ -312,7 +312,7 @@ export default function StoryDetail({ story }: { story: StoryDTO }) {
               }}
             />
           </div>
-          <div className="mt-3 flex justify-between text-[11px] text-steel-400">
+          <div className="mt-3 flex justify-between text-xs font-bold text-steel-300 md:text-[13px]">
             <span>발단</span>
             <span>갈등</span>
             <span>퀴즈</span>
@@ -337,13 +337,13 @@ function StageTimeline({ stage }: { stage: Stage }) {
   ];
   const idx = steps.findIndex((s) => s.id === stage);
   return (
-    <ol className="grid grid-cols-5 gap-1.5 md:gap-3">
+    <ol className="grid grid-cols-5 gap-2 md:gap-3">
       {steps.map((s, i) => {
         const state = i < idx ? "done" : i === idx ? "active" : "todo";
         return (
           <li
             key={s.id}
-            className={`rounded-xl border px-2 py-2 text-center text-[11px] font-black transition-all md:px-3 md:py-2.5 ${
+            className={`rounded-xl border px-2 py-2.5 text-center text-xs font-black transition-all md:px-3 md:py-3 md:text-[13px] ${
               state === "active"
                 ? "border-orange-400/60 bg-orange-500/10 text-white"
                 : state === "done"
@@ -386,14 +386,14 @@ function StageCard({
           Stage {step} · {label}
         </p>
       </div>
-      <p className="mt-3 whitespace-pre-line text-[15px] leading-relaxed text-steel-100">
+      <p className="mt-3 whitespace-pre-line text-[17px] leading-relaxed text-steel-100 md:text-[19px]">
         {body}
       </p>
       {onNext && (
         <button
           type="button"
           onClick={onNext}
-          className="mt-5 inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-navy-700 to-orange-550 px-4 py-2.5 text-xs font-black text-white orange-glow"
+          className="mt-6 inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-navy-700 to-orange-550 px-4 py-3 text-sm font-black text-white orange-glow"
         >
           {nextLabel}
           <ChevronRight className="h-3.5 w-3.5" />

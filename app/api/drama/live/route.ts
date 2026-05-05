@@ -9,10 +9,12 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { dramatizeCase } from "@/lib/gemini";
+import { dramatizeCase, buildFallbackDrama } from "@/lib/gemini";
+import { adaptDramatizeToLivePayload } from "@/lib/liveDramaPayload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /* ── Simple in-memory rate limiter (분당 6회) ─────────────────── */
 type Bucket = { count: number; resetAt: number };
@@ -108,27 +110,39 @@ export async function POST(req: Request) {
   const { keyword, category } = parsed.data;
   const facts = expandKeywordToFacts(keyword, category);
 
+  const started = Date.now();
+  let degraded = false;
+  let raw = await dramatizeCase({ facts, category }).catch((err) => {
+    console.error("[api/drama/live] dramatizeCase failed:", err);
+    degraded = true;
+    return buildFallbackDrama({ facts, category });
+  });
+
   try {
-    const started = Date.now();
-    const drama = await dramatizeCase({ facts, category });
+    const data = adaptDramatizeToLivePayload(raw, { keyword, category });
     return NextResponse.json({
       ok: true,
-      data: drama,
+      data,
       meta: {
-        engine: drama.engine,
+        engine: data.engine,
         elapsedMs: Date.now() - started,
         remaining: rl.remaining,
+        degraded,
       },
     });
   } catch (err) {
-    console.error("[api/drama/live] error:", err);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "DRAMATIZE_FAILED",
-        message: err instanceof Error ? err.message : String(err),
+    console.error("[api/drama/live] adapt/serialize error:", err);
+    raw = buildFallbackDrama({ facts, category });
+    const data = adaptDramatizeToLivePayload(raw, { keyword, category });
+    return NextResponse.json({
+      ok: true,
+      data,
+      meta: {
+        engine: "fallback",
+        elapsedMs: Date.now() - started,
+        remaining: rl.remaining,
+        degraded: true,
       },
-      { status: 500 }
-    );
+    });
   }
 }

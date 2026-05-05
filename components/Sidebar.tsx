@@ -8,6 +8,7 @@ import {
   MessagesSquare,
   BarChart3,
   ClipboardCheck,
+  FilePenLine,
   ShieldCheck,
   Sparkles,
   BookOpen,
@@ -18,6 +19,12 @@ import EchoBubble from "./eco/EchoBubble";
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, tag: "HOME" },
   { href: "/legal-guide", label: "Legal-Guide", icon: Scale, tag: "분석" },
+  {
+    href: "/legal-defense-draft",
+    label: "Legal-Defense-Draft",
+    icon: FilePenLine,
+    tag: "방어",
+  },
   {
     href: "/stories",
     label: "Ethics-Drama",
@@ -41,8 +48,8 @@ export default function Sidebar() {
   return (
     <aside className="sticky top-0 hidden h-screen w-[260px] shrink-0 flex-col border-r border-white/5 bg-navy-900/60 px-4 py-6 backdrop-blur-md md:flex">
       <Link
-        href="/"
-        aria-label="Ethics-Core AI 메인 대시보드로 이동"
+        href="https://lexguardai.vercel.app"
+        aria-label="LexGuardAI Vercel 프로덕션 홈"
         className="group mb-8 flex items-center gap-3 rounded-xl px-2 py-1 transition-all hover:bg-white/[0.03]"
       >
         <div className="relative grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-sky-500 via-indigo-500 to-violet-500 sky-glow">
@@ -50,9 +57,9 @@ export default function Sidebar() {
         </div>
         <div>
           <p className="text-sm font-black tracking-wide text-white">
-            LexGuard.kr
+            lexguardai.vercel.app
           </p>
-          <p className="accent-text text-[11px]">AI 법률자문 플랫폼 · v2.0</p>
+          <p className="accent-text text-[11px]">AI 법률 방어 플랫폼 · v2.0</p>
         </div>
       </Link>
 

@@ -92,7 +92,19 @@ export default function LiveDramaGenerator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ keyword: q }),
       });
-      const j: ApiResp = await r.json();
+      const rawText = await r.text();
+      let j: ApiResp;
+      try {
+        j = JSON.parse(rawText) as ApiResp;
+      } catch {
+        const head = rawText.replace(/\s+/g, " ").slice(0, 160);
+        setError(
+          r.ok
+            ? `서버 응답이 JSON이 아닙니다. (CDN/게이트웨이 HTML 응답 가능) ${head}`
+            : `HTTP ${r.status}. ${head}`
+        );
+        return;
+      }
       if (!j.ok) {
         setError(j.message ?? j.error ?? "생성에 실패했습니다.");
         return;

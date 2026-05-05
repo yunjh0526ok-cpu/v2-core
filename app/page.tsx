@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   BookOpen,
 } from "lucide-react";
+import InstallCycleSetting from "@/components/eco/InstallCycleSetting";
 
 /**
  * Main Home (/)
@@ -58,25 +59,26 @@ export default function Dashboard() {
         <div className="pointer-events-none absolute -bottom-20 -left-10 h-72 w-72 rounded-full bg-violet-500/20 blur-3xl" />
         <div className="relative text-center">
           <p className="text-[12px] font-black uppercase tracking-[0.22em]">
-            <span className="accent-text">LexGuard.kr · AI 법률자문 플랫폼</span>
+            <span className="accent-text">lexguardai.vercel.app · AI 법률 방어 플랫폼</span>
           </p>
           <h1 className="mt-4 text-3xl font-black leading-tight text-white md:text-6xl">
-            공직자를 위한
+            직장인·공직자를 위한
             <br />
-            <span className="gradient-text">AI 법률 방어 센터</span>
+            <span className="gradient-text">법률 리스크 방어</span>
           </h1>
           <p className="mx-auto mt-4 max-w-3xl text-[16px] leading-relaxed text-white/80 md:text-[20px]">
             복잡한 법률 문제를 빠르게 진단하고, 바로 실행 가능한 대응 가이드를 제공합니다.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <Link
-              href="/legal-guide"
+              href="/legal-defense-draft"
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 via-indigo-500 to-violet-500 px-6 py-3 text-base font-black text-white sky-glow hover:opacity-95"
             >
               지금 시작하기
               <ArrowUpRight className="h-4 w-4" />
             </Link>
           </div>
+          <InstallCycleSetting />
         </div>
       </section>
 

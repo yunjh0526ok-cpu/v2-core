@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { callText, type ChatMessage } from "@/lib/gemini";
+import {
+  runComprehensiveLegalEnrichment,
+  shouldRunComprehensiveLegalEnrichment,
+} from "@/lib/comprehensiveLegalEnrichment";
 import { analyzeRisk } from "@/lib/law-api";
 
 export const runtime = "nodejs";
@@ -214,16 +218,24 @@ export async function POST(req: Request) {
   }
 
   const { message, history } = parsed.data;
-  const legalHit = isLegalQuery(message);
+  const legacyLegalHit = isLegalQuery(message);
+  const useComprehensive = shouldRunComprehensiveLegalEnrichment(
+    message,
+    legacyLegalHit
+  );
 
-  // 1) 법령 키워드면 law-api 기반 분석으로 근거 조문 컨텍스트 확보
+  // 1) 레거시: 공직·청렴 키워드 → 기존 analyzeRisk(시나리오·리스크) 유지
+  // 2) 확장: 키워드 미매칭이어도 일반 법률 질의 → 포괄 법령·판례 검색
   let citationsBlock = "";
   let legalContext: {
     riskScore: number;
     riskLevel: string;
     citations: Array<{ statute: string; clause: string; excerpt: string }>;
   } | null = null;
-  if (legalHit) {
+  let enrichment: "legacy" | "comprehensive" | "none" = "none";
+
+  if (legacyLegalHit) {
+    enrichment = "legacy";
     try {
       const analysis = await analyzeRisk(message);
       legalContext = {
@@ -235,11 +247,34 @@ export async function POST(req: Request) {
           excerpt: c.excerpt ?? "",
         })),
       };
-      citationsBlock = formatCitations(legalContext!.citations);
+      citationsBlock = formatCitations(legalContext.citations);
     } catch (err) {
       console.warn("[eco/chat] legal enrichment failed:", (err as Error).message);
     }
+  } else if (useComprehensive) {
+    enrichment = "comprehensive";
+    try {
+      const { systemBlock, context } =
+        await runComprehensiveLegalEnrichment(message);
+      if (systemBlock) citationsBlock = `\n\n${systemBlock}`;
+      legalContext = {
+        riskScore: context.riskScore,
+        riskLevel: context.riskLevel,
+        citations: context.citations.map((c) => ({
+          statute: c.statute,
+          clause: c.clause,
+          excerpt: c.excerpt ?? "",
+        })),
+      };
+    } catch (err) {
+      console.warn(
+        "[eco/chat] comprehensive enrichment failed:",
+        (err as Error).message
+      );
+    }
   }
+
+  const legalHit = legacyLegalHit || useComprehensive;
 
   // 2) 시스템 프롬프트 + 법령 컨텍스트 합성
   const system = SYSTEM_PROMPT + (citationsBlock || "");
@@ -271,6 +306,7 @@ export async function POST(req: Request) {
       reply,
       legalContext,
       legalHit,
+      enrichment,
     },
     meta: {
       engine: usedFallback ? "fallback" : "gemini",

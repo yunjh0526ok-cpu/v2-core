@@ -54,6 +54,7 @@ type Analysis = {
   confidence: "low" | "medium" | "high";
   source: string;
   consultationId?: string;
+  enrichment?: string;
 };
 
 type Message = {
@@ -122,7 +123,8 @@ const AUTO_HIGHLIGHT_KEYWORDS = [
 const SECTION_LABELS = [
   "[상황 진단]",
   "[법령 근거]",
-  "[강사님의 한 줄 조언]",
+  "[변호사 조언]",
+  "[법률 전문가 조언]",
   "[권고 조치]",
 ] as const;
 type SectionLabel = (typeof SECTION_LABELS)[number];
@@ -232,7 +234,40 @@ export default function LegalChatbot() {
         ]);
         return;
       }
-      const analysis = json.data as Analysis;
+      let analysis = json.data as Analysis;
+
+      // /api/law/analyze 응답이 빈 인용인 경우 보강 라우트를 추가 호출해 병합
+      if (
+        analysis.enrichment === "none" ||
+        !Array.isArray(analysis.citations) ||
+        analysis.citations.length === 0
+      ) {
+        try {
+          const enrichRes = await fetch("/api/legal-guide/enrich", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: q }),
+          });
+          const enrichJson = await enrichRes.json();
+          const extraCitations = Array.isArray(enrichJson?.data?.context?.citations)
+            ? (enrichJson.data.context.citations as Citation[])
+            : [];
+          if (extraCitations.length > 0) {
+            const merged = [...(analysis.citations ?? []), ...extraCitations];
+            const deduped: Citation[] = [];
+            const seen = new Set<string>();
+            for (const c of merged) {
+              const key = `${c.statute}|${c.clause}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              deduped.push(c);
+            }
+            analysis = { ...analysis, citations: deduped.slice(0, 12) };
+          }
+        } catch {
+          // enrich 실패 시 기본 응답 유지
+        }
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -569,7 +604,7 @@ function MessageBubble({
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[92%] rounded-2xl px-5 py-4 text-[15.5px] font-semibold leading-[1.85] md:text-[16px] ${
+        className={`max-w-[92%] rounded-2xl px-5 py-4 text-[14px] font-semibold leading-[1.75] md:text-[14.5px] ${
           mine
             ? "whitespace-pre-wrap bg-gradient-to-br from-sky-500 via-indigo-500 to-violet-500 text-white sky-glow"
             : "whitespace-normal break-keep border border-sky-300/25 bg-navy-900/70 text-white/95"
@@ -621,6 +656,12 @@ function MessageBubble({
           <p className="mt-2 flex items-center gap-1 text-[11px] text-rose-300">
             <AlertTriangle className="h-3 w-3" />
             {msg.error}
+          </p>
+        )}
+        {!mine && (
+          <p className="mt-3 border-t border-white/10 pt-2 text-xs italic text-steel-400/90">
+            본 분석은 국가법령정보 API 기반의 AI 자동 분석으로, 법적 효력이 없습니다. 구체적인 사안은 반드시
+            전문 법률가의 조언을 받으시기 바랍니다.
           </p>
         )}
       </div>
@@ -716,7 +757,7 @@ function RiskCard({
 }
 
 /* ═══════════════════════════════════════════════════════════════
- *  Gemini 구조화 답변 ([상황 진단] / [법령 근거] / [강사님의 한 줄 조언] / [권고 조치])
+ *  Gemini 구조화 답변 ([상황 진단] / [법령 근거] / [법률 전문가 조언] / [권고 조치])
  *  을 섹션 단위로 파싱 + 렌더링. 키워드는 자동으로 sky-violet 강조.
  * ═══════════════════════════════════════════════════════════════ */
 
@@ -747,7 +788,8 @@ function parseInstructorSections(raw: string): ParsedSection[] {
 const SECTION_ICON: Record<SectionLabel, { emoji: string; sub: string }> = {
   "[상황 진단]": { emoji: "🧭", sub: "Situation Diagnosis" },
   "[법령 근거]": { emoji: "📜", sub: "Legal Basis" },
-  "[강사님의 한 줄 조언]": { emoji: "🎙️", sub: "Instructor's Note" },
+  "[변호사 조언]": { emoji: "⚖️", sub: "Attorney Note" },
+  "[법률 전문가 조언]": { emoji: "⚖️", sub: "Legal Expert Note" },
   "[권고 조치]": { emoji: "✅", sub: "Action Guide" },
 };
 
@@ -771,8 +813,14 @@ function InstructorRenderer({ sections }: { sections: ParsedSection[] }) {
             {isAction ? (
               <ActionList body={s.body} />
             ) : (
-              <p className="px-1 text-[15.5px] font-semibold leading-[1.95] text-white/95 md:text-[16px]">
-                <HighlightedText text={s.body} />
+              <p className="px-1 text-[14px] font-semibold leading-[1.8] text-white/95 md:text-[14.5px]">
+                <HighlightedText
+                  text={
+                    s.label === "[상황 진단]"
+                      ? compressSituationSummary(s.body)
+                      : s.body
+                  }
+                />
               </p>
             )}
           </section>
@@ -791,7 +839,7 @@ function ActionList({ body }: { body: string }) {
     .map((l) => l.replace(/^\s*(?:[-•*]|[0-9]+[.)])\s*/, ""));
   if (items.length <= 1) {
     return (
-      <p className="px-1 text-[15.5px] font-semibold leading-[1.95] text-white/95 md:text-[16px]">
+      <p className="px-1 text-[14px] font-semibold leading-[1.8] text-white/95 md:text-[14.5px]">
         <HighlightedText text={body} />
       </p>
     );
@@ -806,13 +854,27 @@ function ActionList({ body }: { body: string }) {
           <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-sky-500/35 to-violet-500/35 text-[13px] font-black text-white">
             {i + 1}
           </span>
-          <span className="text-[15.5px] font-semibold leading-[1.85] text-white/95 md:text-[16px]">
+          <span className="text-[14px] font-semibold leading-[1.75] text-white/95 md:text-[14.5px]">
             <HighlightedText text={a} />
           </span>
         </li>
       ))}
     </ol>
   );
+}
+
+function compressSituationSummary(body: string): string {
+  const text = body.replace(/\s+/g, " ").trim();
+  if (!text) return body;
+  const sentences = text
+    .split(/(?<=[.!?。])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (sentences.length >= 2) {
+    const compact = `${sentences[0]} ${sentences[1]}`.trim();
+    return compact.length > 150 ? `${compact.slice(0, 147)}...` : compact;
+  }
+  return text.length > 130 ? `${text.slice(0, 127)}...` : text;
 }
 
 /**
@@ -881,7 +943,7 @@ function GridAnalysisLoader() {
             <StreamTick label="조문 스캔" />
             <StreamTick label="판례 매칭" />
             <StreamTick label="리스크 가중치" />
-            <StreamTick label="강사 해설 생성" />
+            <StreamTick label="변호사 조언 생성" />
           </div>
         </div>
       </div>

@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { serializeStory } from "@/lib/story";
+import { serializeStory, storySeedToDTO } from "@/lib/story";
+import { ETHICS_DRAMA_STORY_SEEDS } from "@/lib/ethicsDramaSeedData";
 import StoryDetail from "@/components/stories/StoryDetail";
 import { ArrowLeft } from "lucide-react";
 
@@ -21,11 +22,15 @@ export async function generateMetadata({
   } catch (error) {
     console.error("[stories/slug] metadata load failed:", error);
   }
-  if (!story) return { title: "Ethics-Drama · LexGuard.kr" };
-  return {
-    title: `${story.title} · Ethics-Drama`,
-    description: story.hook,
-  };
+  const seed = ETHICS_DRAMA_STORY_SEEDS.find((s) => s.slug === slug);
+  const title = story
+    ? `${story.title} · Ethics-Drama`
+    : seed
+      ? `${seed.title} · Ethics-Drama`
+      : null;
+  const description = story?.hook ?? seed?.hook;
+  if (!title) return { title: "Ethics-Drama · lexguardai.vercel.app" };
+  return { title, description: description ?? undefined };
 }
 
 export default async function StoryPage({
@@ -40,8 +45,10 @@ export default async function StoryPage({
   } catch (error) {
     console.error("[stories/slug] page load failed:", error);
   }
-  if (!row || !row.published) notFound();
-  const story = serializeStory(row);
+  const seed = ETHICS_DRAMA_STORY_SEEDS.find((s) => s.slug === slug);
+  const story =
+    row?.published ? serializeStory(row) : seed ? storySeedToDTO(seed) : null;
+  if (!story) notFound();
 
   return (
     <div className="space-y-5 md:space-y-7">

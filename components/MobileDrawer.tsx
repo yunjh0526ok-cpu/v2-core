@@ -20,6 +20,7 @@ import {
   MessagesSquare,
   BarChart3,
   ClipboardCheck,
+  FilePenLine,
   ShieldCheck,
   BookOpen,
   Lock,
@@ -29,6 +30,12 @@ import {
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, tag: "HOME" },
   { href: "/legal-guide", label: "Legal-Guide", icon: Scale, tag: "분석" },
+  {
+    href: "/legal-defense-draft",
+    label: "Legal-Defense-Draft",
+    icon: FilePenLine,
+    tag: "방어",
+  },
   { href: "/stories", label: "Ethics-Drama", icon: BookOpen, tag: "스토리" },
   { href: "/dialogue", label: "Dialogue", icon: MessagesSquare, tag: "토론" },
   {
@@ -94,7 +101,7 @@ export default function MobileDrawer() {
       >
         <div className="flex items-center justify-between">
           <Link
-            href="/"
+            href="https://lexguardai.vercel.app"
             onClick={close}
             className="group flex items-center gap-3 rounded-xl px-2 py-1 transition-all hover:bg-white/[0.03]"
           >
@@ -103,10 +110,10 @@ export default function MobileDrawer() {
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-black tracking-wide text-white">
-                LexGuard.kr
+                lexguardai.vercel.app
               </p>
               <p className="accent-text text-[11px] break-keep">
-                AI 법률자문 플랫폼 · v2.0
+                AI 법률 방어 플랫폼 · v2.0
               </p>
             </div>
           </Link>

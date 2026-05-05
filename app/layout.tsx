@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LexGuard.kr — AI 법률자문 플랫폼",
+  title: "lexguardai.vercel.app — AI 법률자문 플랫폼",
   description:
     "공직자·기관 전용 AI 법률자문 플랫폼. 국가법령 API + 판례 기반 리스크 진단 · Legal-Guide · Intelligence Hub · 청렴도 SaaS.",
   manifest: "/manifest.json",
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     title: "LexGuard",
   },
   openGraph: {
-    title: "LexGuard.kr — AI 법률자문 플랫폼",
+    title: "lexguardai.vercel.app — AI 법률자문 플랫폼",
     description: "공직자·기관 전용 AI 법률자문 플랫폼",
     type: "website",
   },
