@@ -177,14 +177,6 @@ export default function LegalChatbot() {
   // 온보딩: WELCOME_MSG 하나만 있을 때 = 아직 대화 없음
   const showOnboarding = messages.length === 1 && messages[0].id === "m0";
 
-  // 온보딩 칩/버튼 클릭 핸들러
-  const handleOnboardingStart = useCallback((q?: string) => {
-    if (q) {
-      send(q).catch(() => {});
-    } else {
-      inputRef.current?.focus();
-    }
-  }, [send]);
   const searchParams = useSearchParams();
 
   // ── 마운트 후 handoff 주입 (클라이언트 전용, hydration safe) ──
@@ -306,6 +298,15 @@ export default function LegalChatbot() {
       setThinking(false);
     }
   }, [input, thinking]);
+
+  // 온보딩 칩/버튼 클릭 핸들러 — send 선언 이후에 위치해야 함
+  const handleOnboardingStart = useCallback((q?: string) => {
+    if (q) {
+      send(q).catch(() => {});
+    } else {
+      inputRef.current?.focus();
+    }
+  }, [send]);
 
   // URL ?q= 자동 반영 — handoff 가 없는 경우 직접 질문을 보냄
   useEffect(() => {
