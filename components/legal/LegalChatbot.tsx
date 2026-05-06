@@ -17,6 +17,7 @@ import {
   Lightbulb,
   CheckCircle2,
 } from "lucide-react";
+import LegalAnalysisCards from "@/components/legal/LegalAnalysisCards";
 
 /**
  *  AI Legal-Guide 채팅 UI — Gemini + 국가법령 API 통합 버전
@@ -600,44 +601,51 @@ function MessageBubble({
   onFollowUp: (text: string) => void;
 }) {
   const mine = msg.role === "user";
-  const parsed = !mine ? parseInstructorSections(msg.content) : null;
+
+  // AI 분석 결과가 있는 메시지: 구조화 카드 UI로 렌더링
+  const hasAnalysis = !mine && !!msg.analysis;
+
+  // 분석 없는 AI 메시지: 기존 섹션 파서 유지
+  const parsed = !mine && !hasAnalysis ? parseInstructorSections(msg.content) : null;
+
+  if (mine) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl px-5 py-4 text-[14px] font-semibold leading-[1.75] whitespace-pre-wrap bg-gradient-to-br from-sky-500 via-indigo-500 to-violet-500 text-white sky-glow">
+          {msg.content}
+        </div>
+      </div>
+    );
+  }
+
+  // ── AI 메시지 ──
   return (
-    <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[92%] rounded-2xl px-5 py-4 text-[14px] font-semibold leading-[1.75] md:text-[14.5px] ${
-          mine
-            ? "whitespace-pre-wrap bg-gradient-to-br from-sky-500 via-indigo-500 to-violet-500 text-white sky-glow"
-            : "whitespace-normal break-keep border border-sky-300/25 bg-navy-900/70 text-white/95"
-        }`}
-      >
-        {mine ? (
-          msg.content
-        ) : parsed && parsed.length > 0 ? (
-          <InstructorRenderer sections={parsed} />
-        ) : (
-          <HighlightedText text={msg.content} />
-        )}
-        {msg.analysis && (
-          <>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11.5px]">
-              <span className="flex items-center gap-1 font-black text-white">
-                <ShieldAlert className="h-3.5 w-3.5 text-sky-300" />
-                리스크{" "}
-                <span className="accent-text">
-                  {msg.analysis.riskScore}% · {msg.analysis.riskLevel}
-                </span>
-              </span>
-              <span className="rounded-full border border-white/15 px-1.5 py-0.5 text-[10.5px] font-bold text-white/80">
-                신뢰도 {msg.analysis.confidence}
+    <div className="flex justify-start">
+      <div className="w-full max-w-[98%] min-w-0">
+        {hasAnalysis ? (
+          // 구조화 카드 UI (분석 결과 있음)
+          <div className="rounded-2xl border border-sky-300/15 bg-navy-900/60 p-4 md:p-5">
+            <LegalAnalysisCards
+              narrative={msg.content}
+              riskScore={msg.analysis!.riskScore}
+              riskLevel={msg.analysis!.riskLevel}
+              onFollowUp={onFollowUp}
+            />
+            {/* 엔진 배지 + 신뢰도 */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/5 pt-3">
+              <EngineBadge engine={msg.analysis!.engine} />
+              <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-bold text-white/60">
+                신뢰도 {msg.analysis!.confidence}
               </span>
             </div>
-            {msg.analysis.followUpQuestions?.length > 0 && (
-              <div className="mt-3 space-y-1">
-                <p className="text-[10.5px] font-black uppercase tracking-widest text-white/70">
-                  다음으로 물어볼만한 질문
+            {/* 후속 질문 칩 */}
+            {msg.analysis!.followUpQuestions?.length > 0 && (
+              <div className="mt-3 space-y-1.5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/50">
+                  이어서 물어볼만한 질문
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {msg.analysis.followUpQuestions.map((q, i) => (
+                  {msg.analysis!.followUpQuestions.map((q, i) => (
                     <button
                       key={i}
                       type="button"
@@ -650,19 +658,29 @@ function MessageBubble({
                 </div>
               </div>
             )}
-          </>
-        )}
-        {msg.error && (
-          <p className="mt-2 flex items-center gap-1 text-[11px] text-rose-300">
-            <AlertTriangle className="h-3 w-3" />
-            {msg.error}
-          </p>
-        )}
-        {!mine && (
-          <p className="mt-3 border-t border-white/10 pt-2 text-xs italic text-steel-400/90">
-            본 분석은 국가법령정보 API 기반의 AI 자동 분석으로, 법적 효력이 없습니다. 구체적인 사안은 반드시
-            전문 법률가의 조언을 받으시기 바랍니다.
-          </p>
+          </div>
+        ) : parsed && parsed.length > 0 ? (
+          // 기존 섹션 렌더러 (분석 없는 구조화 텍스트)
+          <div className="rounded-2xl border border-sky-300/25 bg-navy-900/70 px-5 py-4">
+            <InstructorRenderer sections={parsed} />
+            {!mine && (
+              <p className="mt-3 border-t border-white/10 pt-2 text-xs italic text-steel-400/90">
+                본 분석은 국가법령정보 API 기반의 AI 자동 분석으로, 법적 효력이 없습니다. 구체적인 사안은 반드시
+                전문 법률가의 조언을 받으시기 바랍니다.
+              </p>
+            )}
+          </div>
+        ) : (
+          // 기본 텍스트 (웰컴 메시지 등)
+          <div className="rounded-2xl border border-sky-300/25 bg-navy-900/70 px-5 py-4 text-[14px] font-semibold leading-[1.75] text-white/95 whitespace-normal break-keep">
+            <HighlightedText text={msg.content} />
+            {msg.error && (
+              <p className="mt-2 flex items-center gap-1 text-[11px] text-rose-300">
+                <AlertTriangle className="h-3 w-3" />
+                {msg.error}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>
