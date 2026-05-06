@@ -13,6 +13,7 @@ import {
   Loader2,
   Database,
   AlertTriangle,
+  FileDown,
   Brain,
   Lightbulb,
   CheckCircle2,
@@ -613,6 +614,120 @@ function EngineBadge({ engine }: { engine: Analysis["engine"] }) {
   );
 }
 
+/** 분석 결과를 새 창에서 PDF로 인쇄 */
+function printLegalAnalysis(analysis: Analysis, question: string) {
+  const riskColor =
+    analysis.riskLevel === "CRITICAL" ? "#f472b6"
+    : analysis.riskLevel === "HIGH" ? "#a78bfa"
+    : analysis.riskLevel === "MEDIUM" ? "#818cf8"
+    : "#38bdf8";
+
+  const citationRows = (analysis.citations ?? [])
+    .map((c) => `<tr><td>${c.statute}</td><td>${c.clause}</td><td>${c.excerpt ?? ""}</td></tr>`)
+    .join("");
+
+  const recItems = (analysis.recommendations ?? [])
+    .map((r) => `<li>${r}</li>`).join("");
+
+  const issueItems = (analysis.keyIssues ?? [])
+    .map((k) => `<li>${k}</li>`).join("");
+
+  const relatedItems = (analysis.relatedLaws ?? [])
+    .map((l) => `<li><b>${l.name}</b>${l.abbr ? ` (${l.abbr})` : ""}${l.department ? ` — ${l.department}` : ""}</li>`)
+    .join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>LexGuard AI 법률 분석 리포트</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', Arial, sans-serif; font-size: 13px; color: #1a1a2e; line-height: 1.75; margin: 0; padding: 0; }
+  header { border-bottom: 3px solid #3366cc; padding-bottom: 12px; margin-bottom: 20px; }
+  header h1 { font-size: 22px; color: #0d1f3d; margin: 0 0 4px; }
+  header .meta { font-size: 11px; color: #666; }
+  .risk-badge { display: inline-block; padding: 5px 14px; border-radius: 20px; font-size: 13px; font-weight: 700; margin-left: 8px; }
+  .section { margin: 14px 0; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #3366cc; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #dde8ff; }
+  .section-body { font-size: 13px; color: #1a1a2e; white-space: pre-wrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+  th { background: #e8f0ff; color: #1a3a6e; padding: 6px 8px; text-align: left; font-size: 11px; }
+  td { padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+  ul, ol { margin: 4px 0; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  .disclaimer { font-size: 10px; color: #999; border-top: 1px solid #ddd; margin-top: 24px; padding-top: 8px; font-style: italic; }
+  .page-break { page-break-before: always; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚖ LexGuard AI 법률 분석 리포트</h1>
+  <div class="meta">
+    분석 일시: ${new Date().toLocaleString("ko-KR")} &nbsp;|&nbsp;
+    엔진: 국가법령정보 API × Gemini LLM &nbsp;|&nbsp;
+    신뢰도: ${analysis.confidence ?? "-"}
+    <span class="risk-badge" style="background:${riskColor}22;color:${riskColor};border:1px solid ${riskColor}55">
+      ${analysis.riskLevel ?? "?"} &nbsp; ${analysis.riskScore ?? 0}%
+    </span>
+  </div>
+</header>
+
+<div class="section">
+  <div class="section-title">📋 질문 / 상황</div>
+  <div class="section-body">${question}</div>
+</div>
+
+${analysis.summary ? `<div class="section">
+  <div class="section-title">📌 요약</div>
+  <div class="section-body">${analysis.summary}</div>
+</div>` : ""}
+
+<div class="section">
+  <div class="section-title">📄 상세 분석</div>
+  <div class="section-body">${analysis.narrative ?? ""}</div>
+</div>
+
+${issueItems ? `<div class="section">
+  <div class="section-title">⚠ 핵심 쟁점</div>
+  <ul>${issueItems}</ul>
+</div>` : ""}
+
+${recItems ? `<div class="section">
+  <div class="section-title">✅ 권고 조치</div>
+  <ul>${recItems}</ul>
+</div>` : ""}
+
+${citationRows ? `<div class="section">
+  <div class="section-title">📚 법령 근거</div>
+  <table>
+    <thead><tr><th>법령명</th><th>조문</th><th>내용</th></tr></thead>
+    <tbody>${citationRows}</tbody>
+  </table>
+</div>` : ""}
+
+${relatedItems ? `<div class="section">
+  <div class="section-title">🔗 관련 법령</div>
+  <ul>${relatedItems}</ul>
+</div>` : ""}
+
+<p class="disclaimer">
+  본 분석은 국가법령정보 API 기반의 AI 자동 분석으로, 법적 효력이 없습니다.
+  구체적인 사안은 반드시 전문 법률가의 조언을 받으시기 바랍니다.
+  LexGuard AI — lexguardai.vercel.app
+</p>
+</body>
+</html>`;
+
+  const w = window.open("", "_blank", "width=900,height=700");
+  if (w) {
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 600);
+  }
+}
+
 function MessageBubble({
   msg,
   onFollowUp,
@@ -678,6 +793,21 @@ function MessageBubble({
                 </div>
               </div>
             )}
+
+            {/* PDF 다운로드 버튼 */}
+            <div className="mt-4 border-t border-white/5 pt-3">
+              <button
+                type="button"
+                onClick={() => printLegalAnalysis(msg.analysis!, msg.analysis!.prompt)}
+                className="flex items-center gap-2 rounded-xl border border-violet-400/40 bg-violet-500/10 px-4 py-2.5 text-[13px] font-black text-violet-200 transition-all hover:border-violet-400/70 hover:bg-violet-500/20"
+              >
+                <FileDown className="h-4 w-4" />
+                PDF 저장
+              </button>
+              <p className="mt-1.5 text-[10px] text-white/30">
+                질문 · 분석 · 법령 근거 · 권고 조치 전체 포함
+              </p>
+            </div>
           </div>
         ) : parsed && parsed.length > 0 ? (
           // 기존 섹션 렌더러 (분석 없는 구조화 텍스트)
