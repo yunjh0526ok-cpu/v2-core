@@ -18,7 +18,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import LegalAnalysisCards from "@/components/legal/LegalAnalysisCards";
-import LegalOnboarding from "@/components/legal/LegalOnboarding";
+import LegalOnboarding from "@/components/legal/LegalOnboarding"; // onboarding-v2
 
 /**
  *  AI Legal-Guide 채팅 UI — Gemini + 국가법령 API 통합 버전
