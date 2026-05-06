@@ -3,7 +3,7 @@
 import React from "react";
 
 interface LegalOnboardingProps {
-  onStart?: () => void;
+  onStart?: (q?: string) => void;
 }
 
 const steps = [
@@ -65,7 +65,7 @@ export default function LegalOnboarding({ onStart }: LegalOnboardingProps) {
       color: "#e8e8f0",
     }}>
 
-      {/* 타이틀 */}
+      {/* 헤더 */}
       <p style={{ fontSize: "20px", fontWeight: 700, color: "#f0f0fa", margin: "0 0 8px", letterSpacing: "-0.3px" }}>
         AI 법률 분석, 이렇게 작동합니다
       </p>
@@ -101,7 +101,7 @@ export default function LegalOnboarding({ onStart }: LegalOnboardingProps) {
         ))}
       </div>
 
-      {/* 예시 질문 칩 */}
+      {/* 예시 질문 칩 — 클릭 시 해당 질문을 바로 전송 */}
       <p style={{ fontSize: "11px", fontWeight: 700, color: "#555577", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 10px" }}>
         이런 질문을 해보세요
       </p>
@@ -109,11 +109,20 @@ export default function LegalOnboarding({ onStart }: LegalOnboardingProps) {
         {exampleQuestions.map((q) => (
           <span
             key={q}
-            onClick={onStart}
+            onClick={() => onStart?.(q)}
             style={{
               fontSize: "11px", padding: "5px 11px", borderRadius: "20px",
               background: "#1a1a2e", border: "0.5px solid #2a2a4e",
               color: "#8888bb", cursor: "pointer",
+              transition: "border-color 0.15s, color 0.15s",
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.borderColor = "#5555aa";
+              (e.currentTarget as HTMLElement).style.color = "#aaaadd";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.borderColor = "#2a2a4e";
+              (e.currentTarget as HTMLElement).style.color = "#8888bb";
             }}
           >
             {q}
@@ -121,7 +130,7 @@ export default function LegalOnboarding({ onStart }: LegalOnboardingProps) {
         ))}
       </div>
 
-      {/* 미리보기 카드 */}
+      {/* 결과 미리보기 카드 3종 */}
       <p style={{ fontSize: "11px", fontWeight: 700, color: "#555577", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 10px" }}>
         결과 미리보기
       </p>
@@ -146,13 +155,16 @@ export default function LegalOnboarding({ onStart }: LegalOnboardingProps) {
 
       {/* 시작 버튼 */}
       <button
-        onClick={onStart}
+        onClick={() => onStart?.()}
         style={{
           width: "100%", padding: "13px", borderRadius: "10px",
           border: "1.5px solid #3366cc", background: "#0d1f3d",
           color: "#88bbff", fontSize: "14px", fontWeight: 700,
           cursor: "pointer", fontFamily: "inherit", letterSpacing: "-0.2px",
+          transition: "background 0.15s",
         }}
+        onMouseEnter={e => (e.currentTarget.style.background = "#1a3366")}
+        onMouseLeave={e => (e.currentTarget.style.background = "#0d1f3d")}
       >
         지금 질문하기 →
       </button>
