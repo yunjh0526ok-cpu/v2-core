@@ -18,6 +18,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import LegalAnalysisCards from "@/components/legal/LegalAnalysisCards";
+import LegalOnboarding from "@/components/legal/LegalOnboarding";
 
 /**
  *  AI Legal-Guide 채팅 UI — Gemini + 국가법령 API 통합 버전
@@ -170,7 +171,20 @@ export default function LegalChatbot() {
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const autoSentRef = useRef(false);
+
+  // 온보딩: WELCOME_MSG 하나만 있을 때 = 아직 대화 없음
+  const showOnboarding = messages.length === 1 && messages[0].id === "m0";
+
+  // 온보딩 칩/버튼 클릭 핸들러
+  const handleOnboardingStart = useCallback((q?: string) => {
+    if (q) {
+      send(q).catch(() => {});
+    } else {
+      inputRef.current?.focus();
+    }
+  }, [send]);
   const searchParams = useSearchParams();
 
   // ── 마운트 후 handoff 주입 (클라이언트 전용, hydration safe) ──
@@ -336,9 +350,13 @@ export default function LegalChatbot() {
         </header>
 
         <div className="flex-1 min-w-0 space-y-3 overflow-y-auto overflow-x-hidden p-5">
-          {messages.map((m) => (
-            <MessageBubble key={m.id} msg={m} onFollowUp={send} />
-          ))}
+          {showOnboarding ? (
+            <LegalOnboarding onStart={handleOnboardingStart} />
+          ) : (
+            messages.map((m) => (
+              <MessageBubble key={m.id} msg={m} onFollowUp={send} />
+            ))
+          )}
           {thinking && <GridAnalysisLoader />}
           <div ref={endRef} />
         </div>
@@ -367,6 +385,7 @@ export default function LegalChatbot() {
               <div className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5">
                 <Sparkles className="h-3.5 w-3.5 shrink-0 text-sky-300" />
                 <input
+                  ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && send()}
