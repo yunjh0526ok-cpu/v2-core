@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useSearchParams } from "next/navigation";
 import Breadcrumbs from "@/components/nav/Breadcrumbs";
 import LegalDefenseChat from "@/components/legal/LegalDefenseChat";
 import {
@@ -145,16 +144,16 @@ function money(n: number) {
 }
 
 export default function LegalDefenseDraftPage() {
-  const searchParams = useSearchParams();
   const [composeMode, setComposeMode] = useState<"ai" | "manual">("ai");
   const [selectedTab, setSelectedTab] = useState<DocTab>("소명서 작성");
 
   useEffect(() => {
-    if (searchParams.get("tab") === "precedent") {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "precedent") {
       setComposeMode("manual");
       setSelectedTab("유사 사례 분석");
     }
-  }, [searchParams]);
+  }, []);
   const [orgType, setOrgType] = useState<"central" | "local" | "public">("public");
   const [rawText, setRawText] = useState("");
   const [agency, setAgency] = useState("");
