@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Send } from "lucide-react";
 
 type Role = "user" | "ai";
@@ -35,15 +35,19 @@ export default function LegalDefenseChat() {
   const [collectedData, setCollectedData] = useState<CollectedData>({});
   const [generated, setGenerated] = useState<GeneratedDoc | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  // stale-closure 방지: 최신 messages를 ref에 동기화
+  const messagesRef = useRef(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   async function send() {
     const q = input.trim();
     if (!q || loading) return;
     /** 첫 안내(a0) 제외, 직전 턴까지의 대화 (이번 사용자 메시지는 message 로만 전달) */
-    const historyPayload = messages.slice(1).map((m) => ({
+    const historyPayload = messagesRef.current.slice(1).map((m) => ({
       role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
       content: m.content,
     }));
+    console.log("[LegalDefenseChat] history sent:", historyPayload.map((h) => ({ role: h.role, len: h.content.length })));
     const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content: q };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
@@ -116,7 +120,7 @@ export default function LegalDefenseChat() {
       "면책 문구: " + DISCLAIMER,
     ].join("\n");
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>${generated.title}</title>
-      <style>body{font-family:Arial,sans-serif;line-height:1.6;padding:24px;white-space:pre-wrap}h1{font-size:24px;margin-bottom:12px}</style>
+      <style>body{font-family:Arial,sans-serif;line-height:1.6;padding:24px 24px 24px 48px;white-space:pre-wrap}h1{font-size:24px;margin-bottom:12px}</style>
       </head><body>${printable.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body></html>`);
     w.document.close();
     w.focus();
