@@ -31,7 +31,7 @@ const CARDS: Card[] = [
     title: "유사 판례를 찾고 싶어요",
     desc: "대법원 판례 3건 즉시 매칭",
     href: "/legal-defense-draft",
-    tab: "유사 사례 분석",
+    tab: "precedent",
   },
   {
     icon: "🛡️",
