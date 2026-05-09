@@ -342,25 +342,33 @@ export default function LegalDefenseDraftPage() {
     setPrecedentError(null);
     setPrecedentResult(null);
     try {
+      const apiKey = process.env.NEXT_PUBLIC_LAW_API_KEY ?? "ethics";
+      console.log("[LexGuard] NEXT_PUBLIC_LAW_API_KEY:", apiKey);
       const keywords = extractQueryKeywords(precedentQuery);
       const params = new URLSearchParams({
-        OC: process.env.NEXT_PUBLIC_LAW_API_KEY ?? "ethics",
+        OC: apiKey,
         target: "prec",
         type: "XML",
         query: keywords,
         display: "12",
       });
-      const res = await fetch(`https://www.law.go.kr/DRF/lawSearch.do?${params}`, {
+      const fullUrl = `https://www.law.go.kr/DRF/lawSearch.do?${params}`;
+      console.log("[LexGuard] 판례 API 호출 URL:", fullUrl);
+      const res = await fetch(fullUrl, {
         headers: { Accept: "application/xml,text/xml,*/*" },
       });
+      console.log("[LexGuard] 판례 API 응답 status:", res.status, res.ok);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const rawXml = await res.text();
+      console.log("[LexGuard] 판례 API 응답 XML (앞 500자):", rawXml.slice(0, 500));
       const xmlDoc = new DOMParser().parseFromString(rawXml, "application/xml");
       const totalCnt = parseInt(
         xmlDoc.getElementsByTagName("totalCnt")[0]?.textContent ?? "0",
         10
       );
+      console.log("[LexGuard] 판례 totalCnt:", totalCnt);
       const precNodes = Array.from(xmlDoc.getElementsByTagName("prec"));
+      console.log("[LexGuard] 파싱된 판례 노드 수:", precNodes.length);
       if (precNodes.length === 0) {
         setPrecedentResult({ items: [], advice: "", totalFound: 0, noResults: true });
         return;
