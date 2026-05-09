@@ -309,6 +309,66 @@ export default function LegalDefenseDraftPage() {
     }
   };
 
+  // 브라우저에서 직접 law.go.kr 호출 — Vercel 서버 IP 우회, 사용자 브라우저 IP 사용
+  const submitPrecedentClient = async () => {
+    if (precedentQuery.trim().length < 5) {
+      setPrecedentError("상황을 5자 이상 입력해 주세요.");
+      return;
+    }
+    setPrecedentLoading(true);
+    setPrecedentError(null);
+    setPrecedentResult(null);
+    try {
+      const keywords = extractQueryKeywords(precedentQuery);
+      const params = new URLSearchParams({
+        OC: process.env.NEXT_PUBLIC_LAW_API_KEY ?? "ethics",
+        target: "prec",
+        type: "XML",
+        query: keywords,
+        display: "12",
+      });
+      const res = await fetch(`https://www.law.go.kr/DRF/lawSearch.do?${params}`, {
+        headers: { Accept: "application/xml,text/xml,*/*" },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rawXml = await res.text();
+      const xmlDoc = new DOMParser().parseFromString(rawXml, "application/xml");
+      const totalCnt = parseInt(
+        xmlDoc.getElementsByTagName("totalCnt")[0]?.textContent ?? "0",
+        10
+      );
+      const precNodes = Array.from(xmlDoc.getElementsByTagName("prec"));
+      if (precNodes.length === 0) {
+        setPrecedentResult({ items: [], advice: "", totalFound: 0, noResults: true });
+        return;
+      }
+      const items: PrecedentItem[] = precNodes.slice(0, 3).map((p) => {
+        const title = p.getElementsByTagName("사건명")[0]?.textContent ?? "";
+        const outcome: "승소" | "패소" =
+          /승소|인용|파기환송|무죄/.test(title) ? "승소" : "패소";
+        return {
+          caseNo: p.getElementsByTagName("사건번호")[0]?.textContent ?? "미상",
+          court: p.getElementsByTagName("법원명")[0]?.textContent ?? "대법원",
+          date: p.getElementsByTagName("선고일자")[0]?.textContent ?? "",
+          gist: title || "사건명 미상",
+          outcome,
+          similarity: "중간" as const,
+          relevantPoint: "관련 쟁점을 포함한 참고 판례입니다.",
+        };
+      });
+      setPrecedentResult({
+        items,
+        advice:
+          "관련 판례를 참고해 방어 전략을 수립하고, 필요 시 전문 법률가의 검토를 받으세요.",
+        totalFound: totalCnt,
+      });
+    } catch (e) {
+      setPrecedentError(e instanceof Error ? e.message : "오류가 발생했습니다.");
+    } finally {
+      setPrecedentLoading(false);
+    }
+  };
+
   const tabUi = TAB_CONFIG[selectedTab];
 
   return (
@@ -413,7 +473,7 @@ export default function LegalDefenseDraftPage() {
           />
           <button
             type="button"
-            onClick={submitPrecedent}
+            onClick={submitPrecedentClient}
             disabled={precedentLoading}
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 via-indigo-500 to-violet-500 px-4 py-2.5 text-sm font-black text-white disabled:opacity-60"
           >
@@ -751,4 +811,21 @@ function InfoCard({ label, value }: { label: string; value: string }) {
       <p className="mt-1 text-sm font-black text-white">{value}</p>
     </div>
   );
+}
+
+// 클라이언트 판례 검색용 키워드 추출 (lib/law-api.ts의 서버 전용 버전과 동일 로직)
+function extractQueryKeywords(text: string): string {
+  const cleaned = text.replace(/\s+/g, " ").trim().slice(0, 200);
+  const filler =
+    /^(저는|저희|제가|혹시|질문입니다|문의드|여쭤|알고\s*싶|궁금합니다|도와)/i;
+  const q = cleaned.replace(filler, "").trim() || cleaned;
+  const stop = new Set([
+    "하는데", "있는데", "경우에", "있을까", "있나요",
+    "되나요", "될까요", "인가요", "맞나요",
+  ]);
+  const tokens = q
+    .split(/[\s,.;，。!?？]+/)
+    .filter((w) => w.length >= 2 && !stop.has(w))
+    .slice(0, 8);
+  return (tokens.join(" ") || q).slice(0, 120);
 }
