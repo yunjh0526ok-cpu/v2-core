@@ -53,6 +53,32 @@ const BodySchema = z.object({
   salaryMonthly: z.number().nonnegative().optional(),
   defenseCost: z.number().nonnegative().optional(),
   expectedFine: z.number().nonnegative().optional(),
+  /** 브라우저에서 직접 law.go.kr 호출한 판례 — 서버 IP 우회용 */
+  clientPrecedents: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        title: z.string().max(400),
+        court: z.string().max(60).optional(),
+        date: z.string().max(30).optional(),
+        caseNo: z.string().max(100).optional(),
+        gist: z.string().max(400),
+        source: z.string().max(100).optional(),
+      })
+    )
+    .max(5)
+    .optional(),
+  /** 브라우저에서 직접 law.go.kr 호출한 법령 — 서버 IP 우회용 */
+  clientLaws: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string().max(200),
+        department: z.string().max(100).optional(),
+      })
+    )
+    .max(5)
+    .optional(),
 });
 
 type Precedent = {
@@ -576,9 +602,30 @@ export async function POST(req: Request) {
   const clause = pickIndemnity(purpose, merged);
   const caseQuery = toCaseQuery(merged, data.selectedTab);
 
+  // clientPrecedents / clientLaws 제공 시 서버측 law.go.kr 호출 스킵 (브라우저 IP 우회)
   const [laws, precedents] = await Promise.all([
-    searchLaws(`${data.selectedTab} ${caseQuery}`),
-    fetchPrecedents(caseQuery),
+    data.clientLaws && data.clientLaws.length > 0
+      ? Promise.resolve({
+          query: caseQuery,
+          totalCnt: data.clientLaws.length,
+          items: data.clientLaws.map((l) => ({ id: l.id, name: l.name, department: l.department })),
+          mocked: false,
+          source: "client-direct" as const,
+        })
+      : searchLaws(`${data.selectedTab} ${caseQuery}`),
+    data.clientPrecedents && data.clientPrecedents.length > 0
+      ? Promise.resolve(
+          data.clientPrecedents.map((p, i) => ({
+            id: p.id ?? `cp-${i}`,
+            title: p.title,
+            court: p.court,
+            date: p.date,
+            caseNo: p.caseNo,
+            gist: p.gist,
+            source: p.source ?? "브라우저 직접 검색",
+          }))
+        )
+      : fetchPrecedents(caseQuery),
   ]);
   const interpretations = rankInterpretations(merged);
 

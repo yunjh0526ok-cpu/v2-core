@@ -37,6 +37,20 @@ const BodySchema = z.object({
   mode: z.enum(["defense", "active-admin"]).optional().default("defense"),
   department: z.string().max(100).optional(),
   persist: z.boolean().optional().default(true),
+  /** 브라우저에서 직접 law.go.kr 호출한 판례 결과 — 서버 IP 우회용 */
+  clientPrecedents: z
+    .array(
+      z.object({
+        caseNo: z.string().max(100),
+        court: z.string().max(60),
+        date: z.string().max(30),
+        gist: z.string().max(300),
+        outcome: z.enum(["승소", "패소"]),
+        outcomeKeyword: z.string().max(60),
+      })
+    )
+    .max(10)
+    .optional(),
 });
 
 export async function POST(req: Request) {
@@ -68,6 +82,7 @@ export async function POST(req: Request) {
     mode,
     department,
     persist,
+    clientPrecedents,
   } = parsed.data;
 
   const started = Date.now();
@@ -76,8 +91,17 @@ export async function POST(req: Request) {
   let base = await analyzeRisk(situation);
 
   // 2) 조문 컨텍스트 수집
+  // clientPrecedents 제공 시 서버측 law.go.kr fetchLawDetail 스킵 (브라우저 IP 우회)
   let articles: LawArticle[] = [];
-  if (base.relatedLaws.length > 0) {
+  if (clientPrecedents && clientPrecedents.length > 0) {
+    // 클라이언트 판례를 pseudo-article 형태로 변환해 Gemini 컨텍스트 보강
+    articles = clientPrecedents.slice(0, 4).map((p, i) => ({
+      no: String(i + 1),
+      sub: "",
+      title: `${p.court} ${p.caseNo} (${p.outcome})`,
+      content: p.gist,
+    }));
+  } else if (base.relatedLaws.length > 0) {
     try {
       const top = base.relatedLaws[0];
       const detail = await fetchLawDetail(top.mst ?? top.id, top.name);

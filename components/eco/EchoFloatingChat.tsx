@@ -5,6 +5,7 @@ import { Send, X, MessageCircle, Loader2, Scale, Sparkles, Home, Download } from
 import Link from "next/link";
 import EchoMascot from "./EchoMascot";
 import PwaInstallPrompt from "./PwaInstallPrompt";
+import { searchPrecedentsClient, precedentsToCitations } from "@/lib/law-api-client";
 
 /**
  *  EchoFloatingChat — 우측 하단 고정 실시간 팩트 체크 상담창
@@ -87,6 +88,15 @@ export default function EchoFloatingChat() {
       setMessages(nextHistory);
       setLoading(true);
       try {
+        // 브라우저에서 직접 law.go.kr 판례 검색 → Vercel 서버 IP 우회
+        let clientCitations: { statute: string; clause: string; excerpt: string }[] = [];
+        try {
+          const precs = await searchPrecedentsClient(text, 6);
+          clientCitations = precedentsToCitations(precs);
+        } catch {
+          /* 실패해도 기존 서버측 analyzeRisk fallback 사용 */
+        }
+
         const res = await fetch("/api/eco/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -97,6 +107,7 @@ export default function EchoFloatingChat() {
               .filter((m) => m !== GREETING)
               .slice(-9, -1)
               .map((m) => ({ role: m.role, content: m.content })),
+            clientCitations,
           }),
         });
         const json = await res.json();

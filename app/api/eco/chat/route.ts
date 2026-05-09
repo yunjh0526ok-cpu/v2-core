@@ -51,6 +51,17 @@ const BodySchema = z.object({
     )
     .max(20)
     .optional(),
+  // 브라우저에서 직접 law.go.kr 호출 결과를 전달 — 서버 IP 우회용
+  clientCitations: z
+    .array(
+      z.object({
+        statute: z.string().max(200),
+        clause: z.string().max(400),
+        excerpt: z.string().max(400),
+      })
+    )
+    .max(5)
+    .optional(),
 });
 
 /* ── 법령 관련 키워드 감지 ─────────────────────────────
@@ -217,7 +228,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { message, history } = parsed.data;
+  const { message, history, clientCitations } = parsed.data;
   const legacyLegalHit = isLegalQuery(message);
   const useComprehensive = shouldRunComprehensiveLegalEnrichment(
     message,
@@ -226,15 +237,21 @@ export async function POST(req: Request) {
 
   // 1) 레거시: 공직·청렴 키워드 → 기존 analyzeRisk(시나리오·리스크) 유지
   // 2) 확장: 키워드 미매칭이어도 일반 법률 질의 → 포괄 법령·판례 검색
+  // 3) [클라이언트 직접 호출] clientCitations 제공 시 analyzeRisk 서버 호출 스킵
   let citationsBlock = "";
   let legalContext: {
     riskScore: number;
     riskLevel: string;
     citations: Array<{ statute: string; clause: string; excerpt: string }>;
   } | null = null;
-  let enrichment: "legacy" | "comprehensive" | "none" = "none";
+  let enrichment: "legacy" | "comprehensive" | "client-direct" | "none" = "none";
 
-  if (legacyLegalHit) {
+  if (clientCitations && clientCitations.length > 0) {
+    // 브라우저에서 직접 가져온 law.go.kr 인용 데이터 사용 — analyzeRisk 호출 없음
+    enrichment = "client-direct";
+    legalContext = { riskScore: 0, riskLevel: "LOW", citations: clientCitations };
+    citationsBlock = formatCitations(clientCitations);
+  } else if (legacyLegalHit) {
     enrichment = "legacy";
     try {
       const analysis = await analyzeRisk(message);

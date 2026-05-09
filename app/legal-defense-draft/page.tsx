@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Breadcrumbs from "@/components/nav/Breadcrumbs";
+import { searchPrecedentsClient, searchLawsClient } from "@/lib/law-api-client";
 import LegalDefenseChat from "@/components/legal/LegalDefenseChat";
 import {
   BadgeAlert,
@@ -216,6 +217,15 @@ export default function LegalDefenseDraftPage() {
     setError(null);
     setResult(null);
     try {
+      // 브라우저에서 직접 law.go.kr 검색 → Vercel 서버 IP 우회
+      const [clientPrecedents, clientLaws] = await Promise.allSettled([
+        searchPrecedentsClient(rawText, 5),
+        searchLawsClient(rawText, 5),
+      ]).then(([p, l]) => [
+        p.status === "fulfilled" ? p.value : [],
+        l.status === "fulfilled" ? l.value : [],
+      ]);
+
       const res = await fetch("/api/legal-defense-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -240,6 +250,19 @@ export default function LegalDefenseDraftPage() {
           salaryMonthly: Number(salaryMonthly || 0),
           defenseCost: Number(defenseCost || 0),
           expectedFine: Number(expectedFine || 0),
+          clientPrecedents: (clientPrecedents as Awaited<ReturnType<typeof searchPrecedentsClient>>).map((p) => ({
+            title: p.gist,
+            caseNo: p.caseNo,
+            court: p.court,
+            date: p.date,
+            gist: p.gist,
+            source: "브라우저 직접 검색",
+          })),
+          clientLaws: (clientLaws as Awaited<ReturnType<typeof searchLawsClient>>).map((l) => ({
+            id: l.id,
+            name: l.name,
+            department: l.department,
+          })),
         }),
       });
       const text = await res.text();

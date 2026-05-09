@@ -10,6 +10,7 @@
  */
 
 import { useState } from "react";
+import { searchPrecedentsClient } from "@/lib/law-api-client";
 import {
   FileText,
   Loader2,
@@ -109,10 +110,18 @@ export default function DeepDiagnoseForm() {
     setError(null);
     setLoading(true);
     try {
+      // 브라우저에서 직접 law.go.kr 판례 검색 → Vercel 서버 IP 우회
+      let clientPrecedents: Awaited<ReturnType<typeof searchPrecedentsClient>> = [];
+      try {
+        clientPrecedents = await searchPrecedentsClient(form.situation, 8);
+      } catch {
+        /* 실패해도 서버측 fetchLawDetail fallback 사용 */
+      }
+
       const r = await fetch("/api/law/deep-analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, evidence }),
+        body: JSON.stringify({ ...form, evidence, clientPrecedents }),
       });
       const j = await r.json();
       if (!j.ok) {

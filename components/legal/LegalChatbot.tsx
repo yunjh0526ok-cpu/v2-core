@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import LegalAnalysisCards from "@/components/legal/LegalAnalysisCards";
 import LegalOnboarding from "@/components/legal/LegalOnboarding"; // onboarding-v2
+import { searchPrecedentsClient } from "@/lib/law-api-client";
 
 /**
  *  AI Legal-Guide 채팅 UI — Gemini + 국가법령 API 통합 버전
@@ -221,10 +222,18 @@ export default function LegalChatbot() {
     setThinking(true);
 
     try {
+      // 브라우저에서 직접 law.go.kr 판례 검색 → Vercel 서버 IP 우회
+      let clientPrecedents: Awaited<ReturnType<typeof searchPrecedentsClient>> = [];
+      try {
+        clientPrecedents = await searchPrecedentsClient(q, 8);
+      } catch {
+        /* 실패해도 서버측 searchRelevantPrecedents fallback 사용 */
+      }
+
       const res = await fetch("/api/law/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: q }),
+        body: JSON.stringify({ prompt: q, clientPrecedents }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) {

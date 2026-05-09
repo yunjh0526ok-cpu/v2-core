@@ -24,6 +24,20 @@ const BodySchema = z.object({
   userTag: z.string().max(60).optional(),
   /** 저장 비활성화 옵션 (예: 테스트) */
   persist: z.boolean().optional().default(true),
+  /** 브라우저에서 직접 law.go.kr 호출한 판례 결과 — 서버 IP 우회용 */
+  clientPrecedents: z
+    .array(
+      z.object({
+        caseNo: z.string().max(100),
+        court: z.string().max(60),
+        date: z.string().max(30),
+        gist: z.string().max(300),
+        outcome: z.enum(["승소", "패소"]),
+        outcomeKeyword: z.string().max(60),
+      })
+    )
+    .max(10)
+    .optional(),
 });
 
 function stripMarkdown(text: string): string {
@@ -50,7 +64,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { prompt, department, userTag, persist } = parsed.data;
+  const { prompt, department, userTag, persist, clientPrecedents } = parsed.data;
 
   //  ── (1) 규칙 엔진 1차 분석 ───────────────────────────────────────
   let baseAnalysis = await analyzeRisk(prompt);
@@ -128,7 +142,10 @@ export async function POST(req: Request) {
   }
 
   //  ── (3) Gemini 강화 (실패 시 rules-only 유지) ───────────────────
-  const precedents = await searchRelevantPrecedents(prompt);
+  // clientPrecedents 제공 시 서버측 law.go.kr 판례 검색 스킵 (브라우저 IP 우회)
+  const precedents = clientPrecedents && clientPrecedents.length > 0
+    ? clientPrecedents
+    : await searchRelevantPrecedents(prompt);
   const publicEthicsQuery = isPublicEthicsQuery(prompt);
   const enhanced = publicEthicsQuery
     ? await enhanceRiskWithGemini(baseAnalysis, articles)
