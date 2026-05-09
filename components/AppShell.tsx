@@ -8,6 +8,7 @@ import MobileDrawer from "./MobileDrawer";
 import DailyQuoteBanner from "./eco/DailyQuoteBanner";
 import EchoFloatingChat from "./eco/EchoFloatingChat";
 import UniversalInstallWidget from "./eco/UniversalInstallWidget";
+import WelcomeOnboarding from "./WelcomeOnboarding";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -35,6 +36,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <DailyQuoteBanner />
       <EchoFloatingChat />
       <UniversalInstallWidget />
+      <WelcomeOnboarding />
     </div>
   );
 }
