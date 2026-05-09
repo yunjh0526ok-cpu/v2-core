@@ -16,6 +16,12 @@ import {
   Sparkles,
 } from "lucide-react";
 
+type PrecedentItem = {
+  caseNo: string; court: string; date: string; gist: string;
+  outcome: string; similarity: "높음" | "중간" | "낮음"; relevantPoint: string;
+};
+type PrecedentResponse = { items: PrecedentItem[]; advice: string; totalFound: number };
+
 type DocTab =
   | "부패신고서"
   | "고소장"
@@ -163,6 +169,12 @@ export default function LegalDefenseDraftPage() {
   const [result, setResult] = useState<ApiData | null>(null);
   const [phase, setPhase] = useState<"idle" | "running" | "done">("idle");
 
+  // 유사 사례 분석 전용 상태
+  const [precedentQuery, setPrecedentQuery] = useState("");
+  const [precedentLoading, setPrecedentLoading] = useState(false);
+  const [precedentError, setPrecedentError] = useState<string | null>(null);
+  const [precedentResult, setPrecedentResult] = useState<PrecedentResponse | null>(null);
+
   const mergedPreview = useMemo(() => {
     const parts = [
       rawText,
@@ -262,6 +274,33 @@ export default function LegalDefenseDraftPage() {
     URL.revokeObjectURL(url);
   };
 
+  const submitPrecedent = async () => {
+    if (precedentQuery.trim().length < 5) {
+      setPrecedentError("상황을 5자 이상 입력해 주세요.");
+      return;
+    }
+    setPrecedentLoading(true);
+    setPrecedentError(null);
+    setPrecedentResult(null);
+    try {
+      const res = await fetch("/api/legal-defense/precedent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ situation: precedentQuery }),
+      });
+      const json = await res.json();
+      if (!json.ok || !json.data) {
+        setPrecedentError(json.error ?? "판례 검색에 실패했습니다.");
+        return;
+      }
+      setPrecedentResult(json.data as PrecedentResponse);
+    } catch (e) {
+      setPrecedentError(e instanceof Error ? e.message : "오류가 발생했습니다.");
+    } finally {
+      setPrecedentLoading(false);
+    }
+  };
+
   const tabUi = TAB_CONFIG[selectedTab];
 
   return (
@@ -350,6 +389,66 @@ export default function LegalDefenseDraftPage() {
         </div>
       </section>
 
+      {selectedTab === "유사 사례 분석" ? (
+        <section className="rounded-2xl border border-white/10 bg-navy-900/55 p-4 space-y-4">
+          <div>
+            <h2 className="text-lg font-black text-white">유사 사례 분석</h2>
+            <p className="mt-1 text-xs text-steel-300">
+              상황을 한 번 입력하면 관련 판례 3건을 즉시 분석합니다. AI가 질문하지 않고 바로 결과를 보여줍니다.
+            </p>
+          </div>
+          <textarea
+            value={precedentQuery}
+            onChange={(e) => setPrecedentQuery(e.target.value)}
+            className="h-36 w-full rounded-xl border border-white/10 bg-navy-950/70 p-3 text-sm text-white outline-none focus:border-sky-300/50"
+            placeholder={TAB_CONFIG["유사 사례 분석"].placeholder}
+          />
+          <button
+            type="button"
+            onClick={submitPrecedent}
+            disabled={precedentLoading}
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 via-indigo-500 to-violet-500 px-4 py-2.5 text-sm font-black text-white disabled:opacity-60"
+          >
+            <FileSearch className="h-4 w-4" />
+            {precedentLoading ? "판례 분석 중..." : "판례 즉시 검색"}
+          </button>
+          {precedentError && (
+            <p className="rounded-lg border border-rose-400/35 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-200">
+              {precedentError}
+            </p>
+          )}
+          {precedentResult && (
+            <div className="space-y-3">
+              {precedentResult.items.map((item, i) => (
+                <div key={i} className="rounded-xl border border-white/10 bg-navy-950/60 p-4 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-black border ${item.outcome === "승소" ? "bg-emerald-500/20 text-emerald-200 border-emerald-300/40" : item.outcome === "패소" ? "bg-rose-500/20 text-rose-200 border-rose-300/40" : "bg-white/10 text-steel-200 border-white/10"}`}>
+                      {item.outcome}
+                    </span>
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-black border ${item.similarity === "높음" ? "bg-sky-500/20 text-sky-200 border-sky-300/40" : item.similarity === "중간" ? "bg-violet-500/20 text-violet-200 border-violet-300/40" : "bg-white/10 text-steel-300 border-white/10"}`}>
+                      유사도 {item.similarity}
+                    </span>
+                    <span className="text-xs text-steel-400">
+                      {item.caseNo} | {item.court}{item.date ? ` | ${item.date}` : ""}
+                    </span>
+                  </div>
+                  <p className="text-sm text-steel-100">{item.gist}</p>
+                  <p className="text-xs text-sky-300">연결 포인트: {item.relevantPoint}</p>
+                </div>
+              ))}
+              {precedentResult.advice && (
+                <div className="rounded-xl border border-violet-300/30 bg-violet-500/10 p-4">
+                  <p className="text-xs font-black text-violet-200">종합 조언</p>
+                  <p className="mt-1 text-sm text-steel-100">{precedentResult.advice}</p>
+                </div>
+              )}
+              <p className="text-xs text-steel-500">
+                검색된 판례 {precedentResult.totalFound}건 중 상위 3건 표시
+              </p>
+            </div>
+          )}
+        </section>
+      ) : (
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-2xl border border-white/10 bg-navy-900/55 p-4">
           <h2 className="text-lg font-black text-white">사건 입력</h2>
@@ -511,8 +610,9 @@ export default function LegalDefenseDraftPage() {
           </div>
         </div>
       </section>
+      )}
 
-      {result && (
+      {selectedTab !== "유사 사례 분석" && result && (
         <section className="space-y-4">
           <div className="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4">
             <p className="text-xs font-black text-violet-200">1단계 · 사건 분석 결과</p>
