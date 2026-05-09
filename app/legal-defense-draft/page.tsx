@@ -20,7 +20,7 @@ type PrecedentItem = {
   caseNo: string; court: string; date: string; gist: string;
   outcome: string; similarity: "높음" | "중간" | "낮음"; relevantPoint: string;
 };
-type PrecedentResponse = { items: PrecedentItem[]; advice: string; totalFound: number };
+type PrecedentResponse = { items: PrecedentItem[]; advice: string; totalFound: number; noResults?: boolean };
 
 type DocTab =
   | "부패신고서"
@@ -417,7 +417,24 @@ export default function LegalDefenseDraftPage() {
               {precedentError}
             </p>
           )}
-          {precedentResult && (
+          {precedentResult && precedentResult.noResults && (
+            <div className="rounded-xl border border-amber-300/35 bg-amber-500/10 p-4 space-y-2">
+              <p className="text-sm font-black text-amber-200">관련 판례를 찾지 못했습니다.</p>
+              <p className="text-xs text-amber-100/80">
+                국가법령정보 API에서 검색 결과가 없습니다.{" "}
+                <a
+                  href="https://glaw.scourt.go.kr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-sky-300 hover:text-sky-200"
+                >
+                  glaw.scourt.go.kr
+                </a>
+                {" "}에서 직접 검색하세요.
+              </p>
+            </div>
+          )}
+          {precedentResult && !precedentResult.noResults && (
             <div className="space-y-3">
               {precedentResult.items.map((item, i) => (
                 <div key={i} className="rounded-xl border border-white/10 bg-navy-950/60 p-4 space-y-2">

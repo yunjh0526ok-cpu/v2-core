@@ -85,7 +85,20 @@ export async function POST(req: Request) {
     /* keep empty — fallback below */
   }
 
-  const top3 = precedents.length > 0 ? precedents.slice(0, 3) : FALLBACK_PRECEDENTS;
+  const top3 = precedents.slice(0, 3);
+
+  // 판례 없음 → 가짜 데이터 대신 안내 메시지 반환
+  if (top3.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      data: {
+        items: [],
+        advice: "",
+        totalFound: 0,
+        noResults: true,
+      },
+    });
+  }
 
   // 2. Gemini 유사도·연결포인트 분석
   const precedentBlock = top3
