@@ -644,7 +644,7 @@ function printLegalAnalysis(analysis: Analysis, question: string) {
 <meta charset="UTF-8">
 <title>LexGuard AI 법률 분석 리포트</title>
 <style>
-  @page { size: A4; margin: 18mm 16mm; }
+  @page { size: A4; margin: 18mm 16mm 18mm 32mm; }
   * { box-sizing: border-box; }
   body { font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', Arial, sans-serif; font-size: 13px; color: #1a1a2e; line-height: 1.75; margin: 0; padding: 0; }
   header { border-bottom: 3px solid #3366cc; padding-bottom: 12px; margin-bottom: 20px; }
