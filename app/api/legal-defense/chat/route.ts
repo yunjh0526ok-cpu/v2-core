@@ -36,6 +36,17 @@ const BodySchema = z.object({
     .optional()
     .default([]),
   docType: z.enum(["소명서", "답변서", "이의신청서", "진술서"]).nullish(),
+  // 클라이언트가 이전 턴 수집 데이터를 전달 → 서버에서 누적
+  prevCollected: z
+    .object({
+      occurredAt: z.string().optional(),
+      department: z.string().optional(),
+      facts: z.string().optional(),
+      position: z.string().optional(),
+      evidence: z.string().optional(),
+    })
+    .optional()
+    .default({}),
 });
 
 function classifyDocType(input: string, hinted?: DocType): DocType | null {
@@ -64,7 +75,7 @@ function extractCollectedData(text: string): CollectedData {
   if (deptMatch) out.department = deptMatch[0];
 
   if (compact.length >= 12) out.facts = compact.slice(0, 260);
-  if (/저는|저의|제 입장|해명|사유|불가피/.test(compact)) out.position = compact.slice(0, 260);
+  if (/저는|저의|제 입장|본인 입장|입장은|해명|사유|불가피|억울|적법|정당|잘못|무관|관계없|몰랐|아니었/.test(compact)) out.position = compact.slice(0, 260);
   if (/카톡|카카오|메신저|이메일|문자|영수증|CCTV|녹취|녹음|사진|없어|없습니다|있어요|있습니다|첨부|자료|서류|증거/.test(compact)) {
     out.evidence = compact.slice(0, 260);
   }
@@ -125,7 +136,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { message, history, docType } = parsed.data;
+  const { message, history, docType, prevCollected } = parsed.data;
 
   // 사용자 메시지만으로 분류/추출 (AI 응답 포함 시 키워드 오염 방지)
   const userTexts = [
@@ -135,7 +146,8 @@ export async function POST(req: Request) {
   const mergedUserText = userTexts.join(" ");
 
   const resolvedType = classifyDocType(mergedUserText, docType ?? undefined);
-  const collected = mergeCollected({}, extractCollectedData(mergedUserText));
+  // prevCollected(이전 턴 누적)를 base로 새 추출값과 병합 → 필드가 사라지지 않음
+  const collected = mergeCollected(prevCollected, extractCollectedData(mergedUserText));
   const missing = resolvedType ? getMissingField(collected) : null;
   const stage: Stage = resolvedType && !missing ? "ready" : "collect";
 

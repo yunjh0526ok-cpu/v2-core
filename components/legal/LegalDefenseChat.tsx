@@ -58,7 +58,7 @@ export default function LegalDefenseChat() {
       const res = await fetch("/api/legal-defense/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: q, history: historyPayload, docType }),
+        body: JSON.stringify({ message: q, history: historyPayload, docType, prevCollected: collectedData }),
       });
       const json = await res.json();
       const nextStage = (json.stage as Stage) ?? "collect";
