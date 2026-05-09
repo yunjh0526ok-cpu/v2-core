@@ -13,13 +13,15 @@ type CollectedData = {
   department?: string;
   facts?: string;
   position?: string;
+  evidence?: string;
 };
 
 const FIELD_LABELS: Record<keyof CollectedData, string> = {
-  occurredAt: "발생 일시",
+  occurredAt: "발생 시점과 기관/부서",
   department: "요청 기관/부서",
   facts: "핵심 사실관계",
   position: "본인 입장/해명",
+  evidence: "증빙 자료",
 };
 
 const BodySchema = z.object({
@@ -63,6 +65,9 @@ function extractCollectedData(text: string): CollectedData {
 
   if (compact.length >= 12) out.facts = compact.slice(0, 260);
   if (/저는|저의|제 입장|해명|사유|불가피/.test(compact)) out.position = compact.slice(0, 260);
+  if (/카톡|카카오|메신저|이메일|문자|영수증|CCTV|녹취|녹음|사진|없어|없습니다|있어요|있습니다|첨부|자료|서류|증거/.test(compact)) {
+    out.evidence = compact.slice(0, 260);
+  }
 
   return out;
 }
@@ -73,14 +78,19 @@ function mergeCollected(base: CollectedData, extra: CollectedData): CollectedDat
     department: base.department || extra.department,
     facts: base.facts || extra.facts,
     position: base.position || extra.position,
+    evidence: base.evidence || extra.evidence,
   };
 }
 
 function getMissingField(collected: CollectedData): keyof CollectedData | null {
-  if (!collected.occurredAt) return "occurredAt";
-  if (!collected.department) return "department";
+  // 1단계: 발생 시점+기관/부서 통합 질문 (둘 다 없을 때만)
+  if (!collected.occurredAt && !collected.department) return "occurredAt";
+  // 2단계: 핵심 사실관계
   if (!collected.facts) return "facts";
+  // 3단계: 본인 입장/해명
   if (!collected.position) return "position";
+  // 4단계: 증빙 자료
+  if (!collected.evidence) return "evidence";
   return null;
 }
 
@@ -88,10 +98,11 @@ function fallbackQuestion(missing: keyof CollectedData | null, docType: DocType 
   if (!docType) {
     return "소명서, 답변서, 이의신청서, 진술서 중 어떤 문서가 필요한지 먼저 알려주실 수 있을까요?";
   }
-  if (missing === "occurredAt") return "언제 발생한 일인지 먼저 알려주세요.";
+  if (missing === "occurredAt") return "언제, 어느 기관/부서에서 발생했나요?";
   if (missing === "department") return "어떤 기관이나 부서에서 요청했는지 알려주세요.";
-  if (missing === "facts") return "핵심 사실관계를 한두 문장으로 설명해 주세요.";
-  if (missing === "position") return "본인 입장이나 해명을 어떻게 정리하고 싶은지 알려주세요.";
+  if (missing === "facts") return "핵심 사실관계가 무엇인가요?";
+  if (missing === "position") return "본인 입장과 해명은 무엇인가요?";
+  if (missing === "evidence") return "증빙 자료가 있나요?";
   return "작성 준비가 됐습니다. 문서를 생성할까요?";
 }
 

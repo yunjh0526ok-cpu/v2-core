@@ -321,8 +321,9 @@ async function enhanceGeneralLegalWithGemini(
     return {
       ...base,
       narrative: stripMarkdown(txt),
-      keyIssues:
-        base.citations.slice(0, 3).map((c) => `${c.statute} ${c.clause}`) || [],
+      keyIssues: [],       // 일반 법률 질문: 핵심쟁점 섹션 미출력
+      recommendations: [], // 일반 법률 질문: 권고조치 섹션 미출력 (공직자 전용 문구 제거)
+      citations: [],       // 일반 법률 질문: 법령근거 섹션 미출력 (narrative에 포함)
       followUpQuestions: followUps,
       engine: "gemini+rules",
       confidence: "medium",
