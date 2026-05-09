@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Breadcrumbs from "@/components/nav/Breadcrumbs";
+import LegalDefenseChat from "@/components/legal/LegalDefenseChat";
 import {
   BadgeAlert,
   Calculator,
@@ -137,6 +138,7 @@ function money(n: number) {
 }
 
 export default function LegalDefenseDraftPage() {
+  const [composeMode, setComposeMode] = useState<"ai" | "manual">("ai");
   const [selectedTab, setSelectedTab] = useState<DocTab>("소명서 작성");
   const [orgType, setOrgType] = useState<"central" | "local" | "public">("public");
   const [rawText, setRawText] = useState("");
@@ -264,6 +266,37 @@ export default function LegalDefenseDraftPage() {
 
   return (
     <div className="space-y-5 md:space-y-6">
+      <section className="rounded-2xl border border-white/10 bg-navy-900/55 p-3">
+        <div className="grid gap-2 md:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setComposeMode("ai")}
+            className={`rounded-xl border px-3 py-3 text-sm font-black transition ${
+              composeMode === "ai"
+                ? "border-sky-400/45 bg-sky-500/15 text-white"
+                : "border-white/10 bg-white/[0.02] text-steel-200 hover:border-sky-300/35"
+            }`}
+          >
+            AI 대화로 작성
+          </button>
+          <button
+            type="button"
+            onClick={() => setComposeMode("manual")}
+            className={`rounded-xl border px-3 py-3 text-sm font-black transition ${
+              composeMode === "manual"
+                ? "border-sky-400/45 bg-sky-500/15 text-white"
+                : "border-white/10 bg-white/[0.02] text-steel-200 hover:border-sky-300/35"
+            }`}
+          >
+            직접 입력
+          </button>
+        </div>
+      </section>
+
+      {composeMode === "ai" ? (
+        <LegalDefenseChat />
+      ) : (
+        <>
       <Breadcrumbs items={[{ label: "Legal-Defense-Draft" }]} />
 
       <section className="gradient-border glass-strong relative overflow-hidden rounded-3xl p-5 md:p-7">
@@ -555,6 +588,8 @@ export default function LegalDefenseDraftPage() {
             </p>
           </div>
         </section>
+      )}
+        </>
       )}
     </div>
   );

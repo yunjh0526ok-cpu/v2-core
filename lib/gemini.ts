@@ -235,14 +235,10 @@ export async function callText(opts: {
 
   const contents: Array<{ role: "user" | "model"; parts: { text: string }[] }> =
     [];
-  userMsgs.forEach((m, i) => {
-    const text =
-      i === 0
-        ? `[SYSTEM INSTRUCTIONS — 반드시 준수]\n${opts.system}\n\n[USER]\n${m.content}`
-        : m.content;
+  userMsgs.forEach((m) => {
     contents.push({
       role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text }],
+      parts: [{ text: m.content }],
     });
   });
   while (contents.length > 0 && contents[0].role !== "user") contents.shift();
@@ -252,6 +248,7 @@ export async function callText(opts: {
   //  thinkingBudget=0 으로 추론 토큰을 끄고 full budget 을 답변에 사용한다.
   const body = JSON.stringify({
     contents,
+    ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
     generationConfig: {
       temperature: opts.temperature ?? 0.35,
       maxOutputTokens: opts.maxOutputTokens ?? 1200,
@@ -351,6 +348,15 @@ export type EnhancedRiskAnalysis = RiskAnalysis & {
   engine: "gemini+rules" | "rules-only";
   confidence: "low" | "medium" | "high";
 };
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/^#{1,6}\s/gm, "")
+    .replace(/^[\*\-]\s/gm, "")
+    .trim();
+}
 
 /**
  *  규칙 엔진이 이미 계산한 `base` 분석을, Gemini 로 "덧씌워" 강화.
@@ -510,7 +516,7 @@ export async function enhanceRiskWithGemini(
     riskScore: mergedScore,
     riskLevel: mergedLevel,
     summary: buildEnhancedSummary(base, out, mergedScore, mergedLevel),
-    narrative: out.summaryKo,
+    narrative: stripMarkdown(out.summaryKo),
     keyIssues: out.keyIssues ?? [],
     followUpQuestions: out.followUpQuestions ?? [],
     citations: mergedCitations,

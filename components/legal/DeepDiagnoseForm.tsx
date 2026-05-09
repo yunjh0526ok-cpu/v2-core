@@ -677,7 +677,7 @@ function ReportSection({
   children: React.ReactNode;
 }) {
   return (
-    <section>
+    <section style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
       <div className="mb-3 flex items-start gap-3 border-b border-white/5 pb-2">
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-orange-500/15">
           {icon}
