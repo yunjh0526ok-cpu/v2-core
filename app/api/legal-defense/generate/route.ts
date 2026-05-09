@@ -11,6 +11,7 @@ const BodySchema = z.object({
       department: z.string().optional(),
       facts: z.string().optional(),
       position: z.string().optional(),
+      evidence: z.string().optional(),
       recipient: z.string().optional(),
       drafter: z.string().optional(),
       lawBasis: z.string().optional(),
@@ -44,6 +45,7 @@ export async function POST(req: Request) {
   const facts = collectedData.facts || "핵심 사실관계 미기재";
   const position = collectedData.position || "본인 입장/해명 미기재";
   const lawBasis = collectedData.lawBasis || "관련 법령 근거는 사실관계 확인 후 보강 필요";
+  const evidence = collectedData.evidence || null;
 
   const title = `${issue} 관련 ${docType}`;
   const content = [
@@ -63,7 +65,7 @@ export async function POST(req: Request) {
     "나. 본인 입장",
     position,
     "",
-    "다. 관련 법령 근거",
+    ...(evidence ? ["다. 증빙 자료", evidence, "", "라. 관련 법령 근거"] : ["다. 관련 법령 근거"]),
     lawBasis,
     "",
     "3. 결론",

@@ -171,12 +171,13 @@ export default function LegalChatbot() {
   const [messages, setMessages] = useState<Message[]>([WELCOME_MSG]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const autoSentRef = useRef(false);
 
-  // 온보딩: WELCOME_MSG 하나만 있을 때 = 아직 대화 없음
-  const showOnboarding = messages.length === 1 && messages[0].id === "m0";
+  // 온보딩: WELCOME_MSG 하나만 있고 명시적으로 닫히지 않은 경우
+  const showOnboarding = !onboardingDismissed && messages.length === 1 && messages[0].id === "m0";
 
   const searchParams = useSearchParams();
 
@@ -302,10 +303,11 @@ export default function LegalChatbot() {
 
   // 온보딩 칩/버튼 클릭 핸들러 — send 선언 이후에 위치해야 함
   const handleOnboardingStart = useCallback((q?: string) => {
+    setOnboardingDismissed(true); // 온보딩 즉시 닫고 채팅으로 전환
     if (q) {
       send(q).catch(() => {});
     } else {
-      inputRef.current?.focus();
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [send]);
 

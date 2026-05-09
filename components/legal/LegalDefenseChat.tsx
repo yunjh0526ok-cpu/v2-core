@@ -12,6 +12,7 @@ type CollectedData = {
   department?: string;
   facts?: string;
   position?: string;
+  evidence?: string;
 };
 
 type ChatMessage = { id: string; role: Role; content: string };
@@ -119,7 +120,7 @@ export default function LegalDefenseChat() {
       </head><body>${printable.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body></html>`);
     w.document.close();
     w.focus();
-    w.print();
+    setTimeout(() => w.print(), 400);
   }
 
   return (
