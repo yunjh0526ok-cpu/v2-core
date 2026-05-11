@@ -64,6 +64,15 @@ function maskKey(k: string) {
   return k.slice(0, 2) + "*".repeat(Math.max(1, k.length - 3)) + k.slice(-1);
 }
 
+/** 서버에서 law.go.kr 호출 시 사용 — 브라우저 직통 대비 상향 호환 */
+export function getLawGoKrUpstreamHeaders(): HeadersInit {
+  return {
+    "User-Agent": "Mozilla/5.0",
+    Referer: "https://www.law.go.kr",
+    Accept: "application/xml",
+  };
+}
+
 /* ══════════════════════════════════════════════════════════════════════
  *  1. XML 파서 설정
  * ══════════════════════════════════════════════════════════════════════ */
@@ -132,7 +141,7 @@ export async function searchLaws(query: string): Promise<LawSearchResponse> {
   try {
     const res = await fetch(url, {
       next: { revalidate: 3600 },
-      headers: { Accept: "application/xml,text/xml,*/*" },
+      headers: getLawGoKrUpstreamHeaders(),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -215,7 +224,7 @@ export async function searchPrecedents(
   try {
     const res = await fetch(url, {
       next: { revalidate: 3600 },
-      headers: { Accept: "application/xml,text/xml,*/*" },
+      headers: getLawGoKrUpstreamHeaders(),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
@@ -252,7 +261,7 @@ function normalizePrecSearchXml(parsed: unknown): PrecedentSearchItem[] {
   }));
 }
 
-function detectOutcome(
+export function detectOutcome(
   text: string
 ): { outcome: "승소" | "패소"; keyword: string } {
   const wonPatterns = [
@@ -458,7 +467,7 @@ export async function fetchLawDetail(
   try {
     const res = await fetch(url, {
       next: { revalidate: 3600 },
-      headers: { Accept: "application/xml,text/xml,*/*" },
+      headers: getLawGoKrUpstreamHeaders(),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();

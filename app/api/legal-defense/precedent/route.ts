@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { callText } from "@/lib/gemini";
-import { searchRelevantPrecedents, type RelevantPrecedent } from "@/lib/law-api";
+import {
+  detectOutcome,
+  extractLegalKeywords,
+  searchPrecedents,
+  searchRelevantPrecedents,
+  type RelevantPrecedent,
+} from "@/lib/law-api";
 
 export const runtime = "nodejs";
 
@@ -62,12 +68,39 @@ function parseAdvice(text: string): string {
   return text.match(/\[종합 조언\]\n?([\s\S]+)/)?.[1]?.trim() ?? "";
 }
 
+const ClientProxySchema = z.object({
+  mode: z.literal("clientProxy"),
+  userText: z.string().min(1).max(4000),
+  display: z.number().min(1).max(30).optional(),
+});
+
 export async function POST(req: Request) {
   let body: unknown;
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ ok: false, error: "INVALID_JSON" }, { status: 400 });
+  }
+
+  const proxyParsed = ClientProxySchema.safeParse(body);
+  if (proxyParsed.success) {
+    const { userText, display } = proxyParsed.data;
+    const d = display ?? 10;
+    const { precQuery } = extractLegalKeywords(userText);
+    const rows = await searchPrecedents(precQuery, d);
+    const clientPrecedents = rows.map((p) => {
+      const gistSource = `${p.title} ${p.gist ?? ""}`.replace(/\s+/g, " ");
+      const { outcome, keyword } = detectOutcome(gistSource);
+      return {
+        caseNo: p.caseNo ?? "미상",
+        court: p.court ?? "대법원",
+        date: p.date ?? "",
+        gist: ((p.gist || p.title).slice(0, 160) || "사건명 미상").trim(),
+        outcome,
+        outcomeKeyword: keyword,
+      };
+    });
+    return NextResponse.json({ ok: true, clientPrecedents });
   }
 
   const parsed = BodySchema.safeParse(body);

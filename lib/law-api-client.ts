@@ -1,9 +1,8 @@
 /**
  * lib/law-api-client.ts
  * ─────────────────────────────────────────────────────────────────────
- * 브라우저 전용 law.go.kr 클라이언트.
- * 서버 IP 우회 목적 — 사용자 브라우저 IP 로 직접 호출.
- * DOMParser / URLSearchParams 사용 → 브라우저 환경에서만 호출할 것.
+ * 브라우저 전용 — 판례 검색은 CORS 회피를 위해 `/api/legal-defense/precedent` 로 프록시.
+ * 법령 검색만 law.go.kr 직접 호출(필요 시 서버 경로로 통합 가능).
  */
 
 const OC = process.env.NEXT_PUBLIC_LAW_API_KEY ?? "ethics";
@@ -72,33 +71,22 @@ export async function searchPrecedentsClient(
   display = 10
 ): Promise<ClientPrecedent[]> {
   try {
-    const keywords = extractClientKeywords(userText);
-    const params = new URLSearchParams({
-      OC,
-      target: "prec",
-      type: "XML",
-      query: keywords,
-      display: String(Math.min(30, Math.max(1, display))),
-    });
-    const res = await fetch(`${BASE}/lawSearch.do?${params}`, {
-      headers: { Accept: "application/xml,text/xml,*/*" },
+    const res = await fetch("/api/legal-defense/precedent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "clientProxy",
+        userText,
+        display: Math.min(30, Math.max(1, display)),
+      }),
     });
     if (!res.ok) return [];
-    const rawXml = await res.text();
-    const xmlDoc = new DOMParser().parseFromString(rawXml, "application/xml");
-    const nodes = Array.from(xmlDoc.getElementsByTagName("prec")).slice(0, display);
-    return nodes.map((p) => {
-      const title = p.getElementsByTagName("사건명")[0]?.textContent ?? "";
-      const { outcome, keyword } = detectClientOutcome(title);
-      return {
-        caseNo: p.getElementsByTagName("사건번호")[0]?.textContent ?? "미상",
-        court: p.getElementsByTagName("법원명")[0]?.textContent ?? "대법원",
-        date: p.getElementsByTagName("선고일자")[0]?.textContent ?? "",
-        gist: title.slice(0, 160) || "사건명 미상",
-        outcome,
-        outcomeKeyword: keyword,
-      };
-    });
+    const json = (await res.json()) as {
+      ok?: boolean;
+      clientPrecedents?: ClientPrecedent[];
+    };
+    if (!json.ok || !Array.isArray(json.clientPrecedents)) return [];
+    return json.clientPrecedents;
   } catch {
     return [];
   }

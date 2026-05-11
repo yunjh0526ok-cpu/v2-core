@@ -2,7 +2,11 @@
 import { XMLParser } from "fast-xml-parser";
 import { z } from "zod";
 import { callText } from "@/lib/gemini";
-import { searchLaws, type LawSearchItem } from "@/lib/law-api";
+import {
+  getLawGoKrUpstreamHeaders,
+  searchLaws,
+  type LawSearchItem,
+} from "@/lib/law-api";
 
 export const runtime = "nodejs";
 
@@ -360,7 +364,7 @@ async function fetchPrecedents(query: string): Promise<Precedent[]> {
 
   try {
     const res = await fetch(url, {
-      headers: { Accept: "application/xml,text/xml,*/*" },
+      headers: getLawGoKrUpstreamHeaders(),
       next: { revalidate: 3600 },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
