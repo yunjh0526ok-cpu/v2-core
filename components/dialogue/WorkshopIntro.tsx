@@ -12,7 +12,7 @@
  *   컬러 톤: 스카이 ↔ 바이올렛 그라데이션
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   QrCode,
   Smartphone,
@@ -143,6 +143,11 @@ function fmtRange(startMin: number, lenMin: number) {
 export default function WorkshopIntro() {
   const [copied, setCopied] = useState(false);
   const [duration, setDuration] = useState<DurationMin>(180);
+  const [sampleUrl, setSampleUrl] = useState("/dialogue#live");
+
+  useEffect(() => {
+    setSampleUrl(`${window.location.origin}/dialogue#live`);
+  }, []);
 
   const stages = useMemo(() => {
     // 5분 단위로 반올림된 소요시간
@@ -162,11 +167,6 @@ export default function WorkshopIntro() {
   }, [duration]);
 
   const totalAssigned = stages.reduce((a, b) => a + b.len, 0);
-
-  const sampleUrl =
-    typeof window === "undefined"
-      ? "https://ethics-core.ai/d/abc123"
-      : `${window.location.origin}/dialogue#live`;
 
   return (
     <section className="space-y-5">

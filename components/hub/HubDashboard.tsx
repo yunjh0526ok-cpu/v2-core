@@ -114,21 +114,37 @@ export default function HubDashboard() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
     (async () => {
       try {
-        const res = await fetch("/api/integrity-metrics", { cache: "no-store" });
+        const res = await fetch("/api/integrity-metrics", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         const json = await res.json();
         if (cancelled) return;
         if (!res.ok || !json.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
         setMetrics(json as Metrics);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "unknown");
+        if (!cancelled) {
+          const msg =
+            e instanceof DOMException && e.name === "AbortError"
+              ? "데이터 로딩 시간이 초과되었습니다 (10초). 잠시 후 다시 시도해주세요."
+              : e instanceof Error
+              ? e.message
+              : "unknown";
+          setError(msg);
+        }
       } finally {
+        clearTimeout(timeout);
         if (!cancelled) setLoading(false);
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
+      clearTimeout(timeout);
     };
   }, []);
 
@@ -177,6 +193,25 @@ export default function HubDashboard() {
 
   if (loading) {
     return <FriendlyLoadingSkeleton />;
+  }
+
+  if (!metrics && error) {
+    return (
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4 rounded-2xl border border-red-400/20 bg-red-500/5 p-10 text-center">
+        <p className="text-[15px] font-bold text-red-300">데이터를 불러오지 못했습니다</p>
+        <p className="text-[13px] text-steel-300">{error}</p>
+        <button
+          onClick={() => {
+            setError(null);
+            setLoading(true);
+            load();
+          }}
+          className="mt-2 rounded-xl border border-sky-400/40 bg-sky-500/10 px-5 py-2 text-[13px] font-bold text-sky-200 hover:bg-sky-500/20"
+        >
+          새로고침
+        </button>
+      </div>
+    );
   }
 
   return (

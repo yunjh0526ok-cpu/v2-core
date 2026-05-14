@@ -38,6 +38,17 @@ const BodySchema = z.object({
     )
     .max(10)
     .optional(),
+  /** 연속 대화 히스토리 (클라이언트에서 누적 전송) */
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "model"]),
+        content: z.string().max(2000),
+      })
+    )
+    .max(20)
+    .optional()
+    .default([]),
 });
 
 function stripMarkdown(text: string): string {
@@ -64,7 +75,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { prompt, department, userTag, persist, clientPrecedents } = parsed.data;
+  const { prompt, department, userTag, persist, clientPrecedents, history } = parsed.data;
 
   //  ── (1) 규칙 엔진 1차 분석 ───────────────────────────────────────
   let baseAnalysis = await analyzeRisk(prompt);
@@ -148,8 +159,8 @@ export async function POST(req: Request) {
     : await searchRelevantPrecedents(prompt);
   const publicEthicsQuery = isPublicEthicsQuery(prompt);
   const enhanced = publicEthicsQuery
-    ? await enhanceRiskWithGemini(baseAnalysis, articles)
-    : await enhanceGeneralLegalWithGemini(baseAnalysis, articles, precedents);
+    ? await enhanceRiskWithGemini(baseAnalysis, articles, history)
+    : await enhanceGeneralLegalWithGemini(baseAnalysis, articles, precedents, history);
 
   //  ── (4) DB 에 상담 기록 저장 → Hub 대시보드 데이터 소스 ────────
   let consultationId: string | undefined;
@@ -222,7 +233,8 @@ async function enhanceGeneralLegalWithGemini(
     source: string;
   },
   relatedArticles: LawArticle[],
-  precedents: RelevantPrecedent[] = []
+  precedents: RelevantPrecedent[] = [],
+  history: Array<{ role: "user" | "model"; content: string }> = []
 ): Promise<EnhancedRiskAnalysis> {
   try {
     const citationLines = base.citations
@@ -262,13 +274,16 @@ async function enhanceGeneralLegalWithGemini(
       "당신은 대한민국 최고 수준의 법률 AI 전문가입니다.",
       "질문 의도를 먼저 파악하고 핵심만 간결하게 답변합니다.",
       "마크다운 기호(**, *, ##, -, •)를 절대 출력하지 마세요.",
+      "이런 상황에서처럼 공감 표현을 자연스럽게 포함하고 대화체로 답변하세요.",
       "일반 법률 질문에서 공직자 전용 문구(소속기관 행동강령, 청렴옴부즈만 등)를 절대 출력하지 마세요.",
       "핵심 쟁점 섹션과 권고 조치 섹션은 출력 금지입니다.",
       "판례 문장은 중간에서 자르지 말고 완성된 문장으로 출력하세요.",
+      "반드시 실제 판례를 1~2건 이상 인용하세요. 판례가 없으면 유사 사례를 찾아 인용하세요.",
       "",
       "[출력 구조 — 반드시 이 순서, 이 형식만]",
       "▶ 핵심 답변",
-      "질문에 대한 직접 답변 2~3줄. 마크다운 기호 절대 사용 금지.",
+      "첫 문장은 반드시 '⚠️ 리스크 XX% —' 형식으로 시작하세요.",
+      "이후 2~3줄: 이유를 자연어 공감형 대화체로 설명. 마크다운 기호 절대 사용 금지.",
       "",
       "▶ 예상 시나리오 (3가지)",
       "각 시나리오별로 아래 항목 포함:",
@@ -276,8 +291,18 @@ async function enhanceGeneralLegalWithGemini(
       "- 인정되는 경우: 구체적 행위 예시 2~3가지",
       "  (예: 무단 공사 중단, 허위 보고서 제출 등)",
       "- 인정되지 않는 경우: 구체적 반례 1~2가지",
-      "- 관련 판례: 이 시나리오에 해당하는 실제 판례 사건번호 + 요지 1줄",
+      "- 관련 판례: [승소 사례] 또는 [패소 사례] 형식으로 사건번호 + 요지 1줄",
       "마크다운 기호 절대 사용 금지. 번호와 줄바꿈으로만 구분할 것.",
+      "",
+      "▶ 관련 판례",
+      "승소/패소 각각 최대 2건. 각 판례는 아래 형식 사용:",
+      "[승소 사례] 사건번호 | 법원명 | 선고일",
+      "→ 핵심 요지: (완결된 문장으로)",
+      "→ 승소 근거: (핵심 키워드)",
+      "[패소 사례] 사건번호 | 법원명 | 선고일",
+      "→ 핵심 요지: (완결된 문장으로)",
+      "→ 패소 원인: (핵심 키워드)",
+      "판례가 없으면: 관련 판례를 찾지 못했습니다. 대법원 종합법률정보(glaw.scourt.go.kr)에서 직접 검색하시기 바랍니다.",
       "",
       "▶ 실행 로드맵",
       "3줄 이내. 핵심만. 날짜/기관명 포함.",
@@ -287,13 +312,32 @@ async function enhanceGeneralLegalWithGemini(
       "1개월: 소장 접수 또는 조정 신청",
       "",
       "▶ 변호사 조언",
+      "'이런 상황에서...' 처럼 공감 표현을 자연스럽게 포함.",
       "실수 TOP 2 + 법정 기한 경고 2~3줄.",
       "",
       "▶ 리스크",
       "% + LOW/MED/HIGH",
     ].join("\n");
 
+    const historyMessages = history.slice(-6).map((h) => ({
+      role: (h.role === "model" ? "assistant" : "user") as "user" | "assistant",
+      content: h.content.slice(0, 800),
+    }));
+
     const user = [
+      ...(history.length > 0
+        ? [
+            `## 이전 대화 맥락 (최근 ${Math.min(history.length, 6)}턴)`,
+            ...history
+              .slice(-6)
+              .map(
+                (h) =>
+                  `[${h.role === "user" ? "이전 질문" : "이전 답변"}]: ${h.content.slice(0, 400)}`
+              ),
+            `위 대화 맥락을 참고해 현재 질문에 연결된 답변을 하세요.`,
+            ``,
+          ]
+        : []),
       `질문: ${base.prompt}`,
       "",
       `기본 리스크 판단: ${base.riskScore}% (${base.riskLevel})`,
@@ -308,26 +352,30 @@ async function enhanceGeneralLegalWithGemini(
       precedentLines,
       "",
       "요구사항:",
-      "1) '핵심 답변:'은 질문에 대한 직접 답변 1~2문장.",
-      "2) '근거 법령:'은 법령명 + 조항번호를 명시.",
-      "3) '관련 판례:'는 승소/패소 각각 최대 2건을 형식대로 출력. 판례가 없으면 안내문 그대로 출력.",
-      "4) '변호사 조언:'은 실무 주의사항 2~3줄.",
-      "5) '리스크:'는 퍼센트와 LOW/MED/HIGH 포함.",
-      "6) 핵심 쟁점/권고 조치 섹션은 절대 출력하지 말 것.",
-      "7) 공직자 전용 문구(소속기관 행동강령, 청렴옴부즈만 등) 금지.",
-      "8) 판례 요지는 문장 중간에 자르지 말고 완결 문장으로 쓸 것.",
-      "9) 위 형식 외 다른 섹션/문구를 쓰지 말 것.",
+      "1) '▶ 핵심 답변' 첫 문장은 반드시 '⚠️ 리스크 XX%' 형식으로 시작.",
+      "2) '▶ 관련 판례'는 [승소 사례]/[패소 사례] 형식으로 실제 판례 1~2건 인용.",
+      "3) '▶ 변호사 조언'은 공감 표현 포함, 실무 주의사항 2~3줄.",
+      "4) '▶ 리스크'는 퍼센트와 LOW/MED/HIGH 포함.",
+      "5) 핵심 쟁점/권고 조치 섹션은 절대 출력하지 말 것.",
+      "6) 공직자 전용 문구(소속기관 행동강령, 청렴옴부즈만 등) 금지.",
+      "7) 판례 요지는 문장 중간에 자르지 말고 완결 문장으로 쓸 것.",
+      "8) 위 형식 외 다른 섹션/문구를 쓰지 말 것.",
     ].join("\n");
+
+    const messages: Array<{ role: "user" | "assistant"; content: string }> = [
+      ...historyMessages,
+      { role: "user", content: user },
+    ];
 
     const txt = await callText({
       system,
-      messages: [{ role: "user", content: user }],
+      messages,
       temperature: 0.25,
       maxOutputTokens: 1400,
     });
 
     if (!txt) {
-      return await enhanceRiskWithGemini(base, relatedArticles);
+      return await enhanceRiskWithGemini(base, relatedArticles, history);
     }
 
     const followUps = [
@@ -346,7 +394,7 @@ async function enhanceGeneralLegalWithGemini(
       confidence: "medium",
     };
   } catch {
-    return await enhanceRiskWithGemini(base, relatedArticles);
+    return await enhanceRiskWithGemini(base, relatedArticles, history);
   }
 }
 

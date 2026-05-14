@@ -457,7 +457,28 @@ export default function DialogueRoom() {
               return (
                 <div
                   key={o.id}
-                  className="flex items-center justify-between rounded-xl border border-white/10 bg-navy-900/60 px-3 py-2.5"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() =>
+                    setOptions((prev) =>
+                      prev.map((opt) =>
+                        opt.id === o.id
+                          ? { ...opt, votes: opt.votes + 1 }
+                          : opt
+                      )
+                    )
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ")
+                      setOptions((prev) =>
+                        prev.map((opt) =>
+                          opt.id === o.id
+                            ? { ...opt, votes: opt.votes + 1 }
+                            : opt
+                        )
+                      );
+                  }}
+                  className="flex cursor-pointer items-center justify-between rounded-xl border border-white/10 bg-navy-900/60 px-3 py-2.5 transition-colors hover:border-sky-400/40 hover:bg-sky-500/10"
                 >
                   <span className="text-[13.5px] font-semibold text-white">
                     {o.label}

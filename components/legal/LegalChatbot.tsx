@@ -120,6 +120,25 @@ const AUTO_HIGHLIGHT_KEYWORDS = [
   "공직자",
 ];
 
+/** 내러티브 텍스트에서 법령·조문 인용을 파싱 */
+function parseCitationsFromNarrative(narrative: string): Citation[] {
+  const results: Citation[] = [];
+  const seen = new Set<string>();
+  // "민법 제750조", "근로기준법 제26조의2" 등 패턴
+  const re = /([가-힣]+법[가-힣\s]*?)\s*(제\d+조(?:의\d+)?(?:\s*제\d+항)?)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(narrative)) !== null) {
+    const statute = m[1].trim().replace(/\s+/g, " ");
+    const clause = m[2].trim();
+    const key = `${statute}|${clause}`;
+    if (!seen.has(key) && statute.length <= 30) {
+      seen.add(key);
+      results.push({ statute, clause });
+    }
+  }
+  return results.slice(0, 8);
+}
+
 /**
  *  4섹션 구조 헤더 — Gemini 프롬프트가 이 헤더를 쓰도록 강제.
  *  출력에서 이 헤더를 찾아 섹션별로 분리 렌더링.
@@ -173,6 +192,9 @@ export default function LegalChatbot() {
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [conversationHistory, setConversationHistory] = useState<
+    Array<{ role: "user" | "model"; content: string }>
+  >([]);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const autoSentRef = useRef(false);
@@ -212,6 +234,14 @@ export default function LegalChatbot() {
     [messages]
   );
 
+  // 일반 법률 질문은 citations:[] 이므로 narrative에서 파싱해 사이드바 보강
+  const sidebarCitations = useMemo<Citation[]>(() => {
+    if (!latestAnalysis) return [];
+    if (latestAnalysis.citations.length > 0) return latestAnalysis.citations;
+    const narrative = latestAnalysis.narrative || latestAnalysis.summary || "";
+    return parseCitationsFromNarrative(narrative);
+  }, [latestAnalysis]);
+
   const send = useCallback(async (text?: string) => {
     const q = (text ?? input).trim();
     if (!q || thinking) return;
@@ -233,7 +263,7 @@ export default function LegalChatbot() {
       const res = await fetch("/api/law/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: q, clientPrecedents }),
+        body: JSON.stringify({ prompt: q, clientPrecedents, history: conversationHistory }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) {
@@ -286,14 +316,20 @@ export default function LegalChatbot() {
           // enrich 실패 시 기본 응답 유지
         }
       }
+      const aiContent = analysis.narrative || analysis.summary;
       setMessages((prev) => [
         ...prev,
         {
           id: `a-${Date.now()}`,
           role: "ai",
-          content: analysis.narrative || analysis.summary,
+          content: aiContent,
           analysis,
         },
+      ]);
+      setConversationHistory((prev) => [
+        ...prev,
+        { role: "user", content: q },
+        { role: "model", content: aiContent.slice(0, 800) },
       ]);
     } catch (err) {
       setMessages((prev) => [
@@ -308,7 +344,7 @@ export default function LegalChatbot() {
     } finally {
       setThinking(false);
     }
-  }, [input, thinking]);
+  }, [input, thinking, conversationHistory]);
 
   // 온보딩 칩/버튼 클릭 핸들러 — send 선언 이후에 위치해야 함
   const handleOnboardingStart = useCallback((q?: string) => {
@@ -450,9 +486,9 @@ export default function LegalChatbot() {
               <span className="accent-text">근거 법령 · 조문</span>
             </p>
           </div>
-          {latestAnalysis?.citations.length ? (
+          {sidebarCitations.length > 0 ? (
             <ul className="space-y-2">
-              {latestAnalysis.citations.map((c, i) => (
+              {sidebarCitations.map((c, i) => (
                 <li
                   key={i}
                   className="rounded-xl border border-sky-300/20 bg-navy-900/50 px-3 py-2.5 text-[13px]"
@@ -467,6 +503,10 @@ export default function LegalChatbot() {
                 </li>
               ))}
             </ul>
+          ) : latestAnalysis ? (
+            <p className="text-[12.5px] font-semibold text-steel-300">
+              관련 법령이 확인되지 않았습니다.
+            </p>
           ) : (
             <p className="text-[12.5px] font-semibold text-steel-300">
               질문을 입력하면 근거 법령/조문이 자동 표기됩니다.
