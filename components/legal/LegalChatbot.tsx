@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import LegalAnalysisCards from "@/components/legal/LegalAnalysisCards";
 import LegalOnboarding from "@/components/legal/LegalOnboarding"; // onboarding-v2
-import { searchPrecedentsClient } from "@/lib/law-api-client";
+// searchPrecedentsClient 제거 — glaw.scourt.go.kr 공개 API 아님, Gemini 기반으로 전환
 
 /**
  *  AI Legal-Guide 채팅 UI — Gemini + 국가법령 API 통합 버전
@@ -195,6 +195,20 @@ export default function LegalChatbot() {
   const [conversationHistory, setConversationHistory] = useState<
     Array<{ role: "user" | "model"; content: string }>
   >([]);
+
+  // 판례즉시검색 상태
+  type PrecedentAIItem = {
+    source: string;
+    caseNo: string;
+    year: string;
+    facts: string;
+    disposition: string;
+    relevance: string;
+  };
+  const [precSearching, setPrecSearching] = useState(false);
+  const [precItems, setPrecItems] = useState<PrecedentAIItem[]>([]);
+  const [precVisible, setPrecVisible] = useState<number>(0); // 순차 애니메이션 카운트
+  const [precInterpretation, setPrecInterpretation] = useState<{ ref: string; summary: string } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const autoSentRef = useRef(false);
@@ -252,18 +266,10 @@ export default function LegalChatbot() {
     setThinking(true);
 
     try {
-      // 브라우저에서 직접 law.go.kr 판례 검색 → Vercel 서버 IP 우회
-      let clientPrecedents: Awaited<ReturnType<typeof searchPrecedentsClient>> = [];
-      try {
-        clientPrecedents = await searchPrecedentsClient(q, 8);
-      } catch {
-        /* 실패해도 서버측 searchRelevantPrecedents fallback 사용 */
-      }
-
       const res = await fetch("/api/law/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: q, clientPrecedents, history: conversationHistory }),
+        body: JSON.stringify({ prompt: q, clientPrecedents: [], history: conversationHistory }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) {
@@ -345,6 +351,38 @@ export default function LegalChatbot() {
       setThinking(false);
     }
   }, [input, thinking, conversationHistory]);
+
+  const searchPrecedentsAI = useCallback(async () => {
+    if (precSearching || !latestAnalysis) return;
+    setPrecSearching(true);
+    setPrecItems([]);
+    setPrecVisible(0);
+    setPrecInterpretation(null);
+    try {
+      // 최소 1.5초 스피너 보장
+      const [res] = await Promise.all([
+        fetch("/api/law/precedents-ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: latestAnalysis.prompt }),
+        }),
+        new Promise((r) => setTimeout(r, 1500)),
+      ]);
+      const json = await res.json();
+      if (json.ok && Array.isArray(json.items) && json.items.length > 0) {
+        setPrecItems(json.items);
+        setPrecInterpretation(json.interpretation ?? null);
+        // 순차 등장: 500ms 간격으로 카드 표시
+        json.items.forEach((_: unknown, i: number) => {
+          setTimeout(() => setPrecVisible((v) => Math.max(v, i + 1)), i * 500);
+        });
+      }
+    } catch {
+      /* noop */
+    } finally {
+      setPrecSearching(false);
+    }
+  }, [precSearching, latestAnalysis]);
 
   // 온보딩 칩/버튼 클릭 핸들러 — send 선언 이후에 위치해야 함
   const handleOnboardingStart = useCallback((q?: string) => {
@@ -459,6 +497,83 @@ export default function LegalChatbot() {
       {/* ANALYSIS PANEL */}
       <section className="min-w-0 space-y-4">
         <RiskCard risk={latestAnalysis?.riskScore ?? 0} level={latestAnalysis?.riskLevel} />
+
+        {/* 판례즉시검색 버튼 */}
+        {latestAnalysis && (
+          <div className="glass rounded-2xl p-4">
+            <button
+              onClick={searchPrecedentsAI}
+              disabled={precSearching}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 border border-amber-400/30 px-4 py-2.5 text-[13px] font-black text-amber-200 transition-all hover:border-amber-400/60 hover:from-amber-500/30 disabled:opacity-60"
+            >
+              {precSearching ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  판례 검색 중…
+                </>
+              ) : (
+                <>
+                  <Gavel className="h-3.5 w-3.5" />
+                  판례즉시검색
+                </>
+              )}
+            </button>
+
+            {/* 순차 등장 결과 카드 */}
+            {precItems.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {precItems.slice(0, precVisible).map((item, i) => {
+                  const sourceColor =
+                    item.source.includes("대법원")
+                      ? { badge: "bg-blue-500/20 border-blue-400/30 text-blue-300", dot: "bg-blue-400" }
+                      : item.source.includes("권익위") || item.source.includes("국민권익위")
+                      ? { badge: "bg-orange-500/20 border-orange-400/30 text-orange-300", dot: "bg-orange-400" }
+                      : item.source.includes("감사원")
+                      ? { badge: "bg-emerald-500/20 border-emerald-400/30 text-emerald-300", dot: "bg-emerald-400" }
+                      : { badge: "bg-violet-500/20 border-violet-400/30 text-violet-300", dot: "bg-violet-400" };
+                  return (
+                    <div
+                      key={i}
+                      className="animate-fade-in rounded-xl border border-white/10 bg-navy-900/60 p-3"
+                      style={{ animationDelay: `${i * 0.1}s` }}
+                    >
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${sourceColor.badge}`}>
+                          {item.source}
+                        </span>
+                        {item.year && (
+                          <span className="text-[10.5px] font-semibold text-steel-400">{item.year}</span>
+                        )}
+                        {item.disposition && (
+                          <span className="ml-auto text-[11px] font-black text-rose-300">{item.disposition}</span>
+                        )}
+                      </div>
+                      {item.caseNo && (
+                        <p className="mb-1 text-[11px] font-bold text-steel-300">{item.caseNo}</p>
+                      )}
+                      {item.facts && (
+                        <p className="text-[12px] font-semibold leading-relaxed text-white/80">{item.facts}</p>
+                      )}
+                      {item.relevance && (
+                        <p className="mt-1.5 border-l-2 border-amber-400/50 pl-2 text-[11px] text-amber-200/80">
+                          {item.relevance}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+                {precInterpretation && precVisible >= precItems.length && (
+                  <div className="rounded-xl border border-violet-400/20 bg-violet-500/5 p-3">
+                    <p className="mb-0.5 text-[10.5px] font-black text-violet-300">
+                      유권해석 · {precInterpretation.ref}
+                    </p>
+                    <p className="text-[12px] font-semibold text-white/80">{precInterpretation.summary}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {latestAnalysis?.keyIssues && latestAnalysis.keyIssues.length > 0 && (
           <div className="glass rounded-2xl p-5">

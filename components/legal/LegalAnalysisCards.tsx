@@ -30,6 +30,13 @@ import {
 
 type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
+interface DispositionCase {
+  source: string; // 기관명
+  year: string;
+  result: string; // 처분결과
+  reason: string; // 핵심 사유
+}
+
 interface ParsedAnalysis {
   coreAnswer?: string;
   scenarios?: string;
@@ -41,6 +48,12 @@ interface ParsedAnalysis {
   situationDiagnosis?: string;
   legalBasis?: string;
   recommendedActions?: string[];
+  // Format C
+  riskJudgment?: string;
+  scenarioText?: string;
+  dispositionCases?: DispositionCase[];
+  immediateActions?: string[];
+  followUpQuestions?: string[];
 }
 
 interface RoadmapStep {
@@ -67,7 +80,7 @@ interface PrecedentItem {
 // Parser
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** ▶ 헤더 기반 섹션 파싱 (Format A) */
+/** ▶ 헤더 기반 섹션 파싱 (Format A — 일반 법률) */
 const FORMAT_A_LABELS = [
   "▶ 핵심 답변",
   "▶ 예상 시나리오",
@@ -78,7 +91,7 @@ const FORMAT_A_LABELS = [
   "▶ 리스크",
 ] as const;
 
-/** [] 헤더 기반 섹션 파싱 (Format B) */
+/** [] 헤더 기반 섹션 파싱 (Format B — 기존 공직 청렴) */
 const FORMAT_B_LABELS = [
   "[상황 진단]",
   "[법령 근거]",
@@ -87,8 +100,18 @@ const FORMAT_B_LABELS = [
   "[권고 조치]",
 ] as const;
 
+/** ① ~ ⑤ 헤더 기반 섹션 파싱 (Format C — 새 공직 청렴 5섹션) */
+const FORMAT_C_LABELS = [
+  "[① 리스크 판정]",
+  "[② 시나리오]",
+  "[③ 처분 사례]",
+  "[④ 즉시 조치]",
+  "[⑤ 연결 질문]",
+] as const;
+
 type FormatALabel = (typeof FORMAT_A_LABELS)[number];
 type FormatBLabel = (typeof FORMAT_B_LABELS)[number];
+type FormatCLabel = (typeof FORMAT_C_LABELS)[number];
 
 function splitBySections(
   raw: string,
@@ -245,8 +268,65 @@ function parsePrecedents(body: string): PrecedentItem[] {
   return items;
 }
 
+function parseDispositionCases(body: string): DispositionCase[] {
+  const items: DispositionCase[] = [];
+  const lines = body
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 4);
+
+  for (const line of lines) {
+    // "기관명 / 연도 / 처분결과 / 핵심 사유" 형식
+    const parts = line.split(/\s*\/\s*/).map((s) => s.trim());
+    if (parts.length >= 3) {
+      items.push({
+        source: parts[0],
+        year: parts[1] ?? "",
+        result: parts[2] ?? "",
+        reason: parts[3] ?? "",
+      });
+    }
+  }
+  return items.slice(0, 3);
+}
+
+function parseImmediateActions(body: string): string[] {
+  return body
+    .split(/\r?\n/)
+    .map((l) => l.trim().replace(/^[0-9]+[.)]\s*/, "").replace(/^[-•]\s*/, ""))
+    .filter((l) => l.length > 4)
+    .slice(0, 4);
+}
+
+function parseFollowUpQuestions(body: string): string[] {
+  return body
+    .split(/\r?\n/)
+    .map((l) => l.trim().replace(/^[0-9]+[.)]\s*/, "").replace(/^[-•]\s*/, ""))
+    .filter((l) => l.length > 4 && l.includes("?"))
+    .slice(0, 3);
+}
+
 function parseNarrative(narrative: string): ParsedAnalysis {
   if (!narrative) return {};
+
+  // Format C 우선 체크 (새 5섹션 공직 포맷)
+  const hasFormatC = FORMAT_C_LABELS.some((l) => narrative.includes(l));
+  if (hasFormatC) {
+    const sections = splitBySections(narrative, FORMAT_C_LABELS) as Record<FormatCLabel, string>;
+    return {
+      riskJudgment: sections["[① 리스크 판정]"],
+      scenarioText: sections["[② 시나리오]"],
+      dispositionCases: sections["[③ 처분 사례]"]
+        ? parseDispositionCases(sections["[③ 처분 사례]"])
+        : undefined,
+      immediateActions: sections["[④ 즉시 조치]"]
+        ? parseImmediateActions(sections["[④ 즉시 조치]"])
+        : undefined,
+      followUpQuestions: sections["[⑤ 연결 질문]"]
+        ? parseFollowUpQuestions(sections["[⑤ 연결 질문]"])
+        : undefined,
+    };
+  }
 
   const hasFormatA = FORMAT_A_LABELS.some((l) => narrative.includes(l));
   const hasFormatB = FORMAT_B_LABELS.some((l) => narrative.includes(l));
@@ -267,8 +347,7 @@ function parseNarrative(narrative: string): ParsedAnalysis {
 
   if (hasFormatB) {
     const sections = splitBySections(narrative, FORMAT_B_LABELS) as Record<FormatBLabel, string>;
-    const actionBody =
-      sections["[권고 조치]"] ?? "";
+    const actionBody = sections["[권고 조치]"] ?? "";
     const actionItems = actionBody
       .split(/\r?\n/)
       .map((l) => l.trim().replace(/^[0-9]+[.)]\s*/, "").replace(/^[-•]\s*/, ""))
@@ -833,6 +912,217 @@ function ScenariosCard({ text }: { text: string }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Format C Components (새 5섹션 공직 청렴 포맷)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function RiskJudgmentCard({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        background: "#0a0e1f",
+        border: "0.5px solid #1a2a4a",
+        borderRadius: "14px",
+        padding: "16px",
+        boxShadow: "0 0 28px rgba(125,211,252,0.07)",
+      }}
+    >
+      <CardHeader icon={<ShieldAlert size={15} />} label="리스크 판정" sub="Risk Assessment" accent="sky" />
+      <p style={{ fontSize: "14px", fontWeight: 600, color: "#e0e8ff", lineHeight: 1.8, margin: 0, whiteSpace: "pre-line" }}>
+        {text}
+      </p>
+    </div>
+  );
+}
+
+function ScenarioTextCard({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        background: "#0d1220",
+        border: "0.5px solid #1e2a45",
+        borderRadius: "14px",
+        padding: "16px",
+      }}
+    >
+      <CardHeader icon={<TrendingUp size={15} />} label="예상 시나리오" sub="What Happens Next" accent="sky" />
+      <p style={{ fontSize: "13.5px", fontWeight: 600, color: "#d0d8f0", lineHeight: 1.8, margin: 0, whiteSpace: "pre-line" }}>
+        {text}
+      </p>
+    </div>
+  );
+}
+
+const SOURCE_BADGE: Record<string, { bg: string; border: string; text: string; label: string }> = {
+  대법원:      { bg: "#0d1733", border: "#1e3a6e", text: "#60a5fa", label: "대법원" },
+  국민권익위:  { bg: "#1f1006", border: "#5c2d00", text: "#fb923c", label: "국민권익위" },
+  권익위:      { bg: "#1f1006", border: "#5c2d00", text: "#fb923c", label: "국민권익위" },
+  감사원:      { bg: "#0d1f14", border: "#1a3d22", text: "#4ade80", label: "감사원" },
+  인사혁신처:  { bg: "#1a0d2e", border: "#3b1d5c", text: "#c4b5fd", label: "인사혁신처" },
+};
+
+function getSourceStyle(source: string) {
+  for (const [key, style] of Object.entries(SOURCE_BADGE)) {
+    if (source.includes(key)) return style;
+  }
+  return SOURCE_BADGE["대법원"];
+}
+
+function DispositionCasesCard({ items }: { items: DispositionCase[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div
+      style={{
+        background: "#080d1a",
+        border: "0.5px solid #1a2540",
+        borderRadius: "14px",
+        padding: "16px",
+      }}
+    >
+      <CardHeader icon={<Gavel size={15} />} label="처분 사례" sub="Actual Dispositions" accent="amber" />
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        {items.map((item, i) => {
+          const style = getSourceStyle(item.source);
+          return (
+            <div
+              key={i}
+              style={{
+                background: style.bg,
+                border: `0.5px solid ${style.border}`,
+                borderRadius: "10px",
+                padding: "12px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                <span
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 800,
+                    color: style.text,
+                    background: `${style.text}22`,
+                    border: `0.5px solid ${style.border}`,
+                    borderRadius: "4px",
+                    padding: "2px 8px",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {style.label}
+                </span>
+                {item.year && (
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#5b6ea1" }}>
+                    {item.year}
+                  </span>
+                )}
+                {item.result && (
+                  <span style={{ fontSize: "11.5px", fontWeight: 800, color: "#f87171", marginLeft: "auto" }}>
+                    {item.result}
+                  </span>
+                )}
+              </div>
+              {item.reason && (
+                <p style={{ fontSize: "12px", fontWeight: 600, color: "#b0bcd0", lineHeight: 1.6, margin: 0 }}>
+                  {item.reason}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ImmediateActionsCard({ items }: { items: string[] }) {
+  const stepColors = [
+    { num: "#f87171", bg: "#1f0a0a", border: "#5c1a1a" },
+    { num: "#fb923c", bg: "#1f1006", border: "#5c2d00" },
+    { num: "#4ade80", bg: "#0d1f14", border: "#1a3d22" },
+    { num: "#60a5fa", bg: "#0d1733", border: "#1e3a6e" },
+  ];
+  return (
+    <div
+      style={{
+        background: "#070c1b",
+        border: "0.5px solid #1a2040",
+        borderRadius: "14px",
+        padding: "16px",
+      }}
+    >
+      <CardHeader icon={<CheckCircle2 size={15} />} label="즉시 조치" sub="Immediate Actions" accent="green" />
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        {items.map((action, i) => {
+          const c = stepColors[i % stepColors.length];
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+              <div
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  borderRadius: "50%",
+                  background: c.bg,
+                  border: `1px solid ${c.border}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  color: c.num,
+                  flexShrink: 0,
+                  marginTop: "1px",
+                }}
+              >
+                {i + 1}
+              </div>
+              <p style={{ fontSize: "13px", fontWeight: 600, color: "#c8d4f0", lineHeight: 1.7, margin: 0, flex: 1 }}>
+                {action}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FollowUpQuestionsCard({ items, onFollowUp }: { items: string[]; onFollowUp?: (q: string) => void }) {
+  if (items.length === 0) return null;
+  return (
+    <div
+      style={{
+        background: "#0a0e1f",
+        border: "0.5px solid #1a2040",
+        borderRadius: "14px",
+        padding: "14px 16px",
+      }}
+    >
+      <CardHeader icon={<Lightbulb size={15} />} label="연결 질문" sub="Suggested Follow-ups" accent="violet" />
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        {items.map((q, i) => (
+          <button
+            key={i}
+            onClick={() => onFollowUp?.(q)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "rgba(125,211,252,0.05)",
+              border: "0.5px solid rgba(125,211,252,0.15)",
+              borderRadius: "8px",
+              padding: "8px 10px",
+              cursor: "pointer",
+              textAlign: "left",
+              width: "100%",
+            }}
+          >
+            <ChevronRight size={12} style={{ color: "#7dd3fc", flexShrink: 0 }} />
+            <span style={{ fontSize: "12.5px", fontWeight: 600, color: "#d0d8f0", lineHeight: 1.55 }}>{q}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RiskBadge({
   riskScore,
   riskLevel,
@@ -905,16 +1195,23 @@ export default function LegalAnalysisCards({
   narrative,
   riskScore,
   riskLevel,
-  onFollowUp: _onFollowUp,
+  onFollowUp,
 }: LegalAnalysisCardsProps) {
   const parsed = parseNarrative(narrative);
 
+  const hasFormatC = !!(
+    parsed.riskJudgment ||
+    parsed.scenarioText ||
+    parsed.dispositionCases ||
+    parsed.immediateActions
+  );
+
+  // 중복 방지: lawyerNote는 두 포맷 공유 → hasFormatA 판별에서 제외
   const hasFormatA = !!(
     parsed.coreAnswer ||
     parsed.roadmap ||
     parsed.statutes ||
-    parsed.precedents ||
-    parsed.lawyerNote
+    parsed.precedents
   );
 
   const hasFormatB = !!(
@@ -923,8 +1220,8 @@ export default function LegalAnalysisCards({
     parsed.recommendedActions
   );
 
-  // 파싱에 실패했으면 기존 텍스트를 있는 그대로 보여줌
-  if (!hasFormatA && !hasFormatB) {
+  // 파싱에 실패했으면 원문 텍스트 그대로 표시
+  if (!hasFormatC && !hasFormatA && !hasFormatB) {
     return (
       <p style={{ fontSize: "14px", fontWeight: 600, color: "#d0d8f0", lineHeight: 1.75, margin: 0 }}>
         {narrative}
@@ -940,8 +1237,25 @@ export default function LegalAnalysisCards({
         <RiskBadge riskScore={riskScore} riskLevel={riskLevel} riskRaw={parsed.riskRaw} />
       ) : null}
 
+      {/* ── Format C (①~⑤ 새 공직 청렴 포맷) ── */}
+      {hasFormatC && (
+        <>
+          {parsed.riskJudgment && <RiskJudgmentCard text={parsed.riskJudgment} />}
+          {parsed.scenarioText && <ScenarioTextCard text={parsed.scenarioText} />}
+          {parsed.dispositionCases && parsed.dispositionCases.length > 0 && (
+            <DispositionCasesCard items={parsed.dispositionCases} />
+          )}
+          {parsed.immediateActions && parsed.immediateActions.length > 0 && (
+            <ImmediateActionsCard items={parsed.immediateActions} />
+          )}
+          {parsed.followUpQuestions && parsed.followUpQuestions.length > 0 && (
+            <FollowUpQuestionsCard items={parsed.followUpQuestions} onFollowUp={onFollowUp} />
+          )}
+        </>
+      )}
+
       {/* ── Format A (▶ 섹션) ── */}
-      {hasFormatA && (
+      {!hasFormatC && hasFormatA && (
         <>
           {parsed.coreAnswer && <CoreAnswerCard text={parsed.coreAnswer} />}
           {parsed.scenarios && <ScenariosCard text={parsed.scenarios} />}
@@ -972,11 +1286,11 @@ export default function LegalAnalysisCards({
       )}
 
       {/* ── Format B ([] 섹션) ── */}
-      {hasFormatB && (
+      {!hasFormatC && hasFormatB && (
         <>
           {parsed.situationDiagnosis && <SituationCard text={parsed.situationDiagnosis} />}
 
-          {/* 법령 근거 + 변호사 조언 2열 */}
+          {/* 법령 근거 + 변호사 조언 2열 (lawyerNote는 Format B에서만 출력) */}
           {parsed.legalBasis || parsed.lawyerNote ? (
             <div
               style={{
