@@ -265,29 +265,63 @@ export default function LegalChatbot() {
     setInput("");
     setThinking(true);
 
-    try {
+    /** 오류 유형별 한국어 메시지 */
+    const getErrorMsg = (status: number): string => {
+      if (status === 529) return "AI 서버가 잠시 바쁩니다. 잠시 후 다시 질문해 주세요.";
+      if (status === 429) return "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.";
+      if (status >= 500) return "일시적인 오류입니다. 다시 시도해 주세요.";
+      return "연결에 문제가 발생했습니다. 다시 시도해 주세요.";
+    };
+
+    const doFetch = async (attempt: number): Promise<void> => {
       const res = await fetch("/api/law/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: q, clientPrecedents: [], history: conversationHistory }),
       });
-      const json = await res.json();
-      if (!res.ok || !json.ok) {
-        const msg =
-          json?.details?.[0]?.message ??
-          json?.error ??
-          `분석 실패 (HTTP ${res.status})`;
+
+      // 529 — AI 과부하: 1회 자동 재시도
+      if (res.status === 529) {
+        if (attempt === 0) {
+          const retryId = `retry-notice-${Date.now()}`;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: retryId,
+              role: "ai" as const,
+              content: "AI 서버가 잠시 바쁩니다. 3초 후 자동으로 다시 시도합니다...",
+            },
+          ]);
+          await new Promise((r) => setTimeout(r, 3000));
+          setMessages((prev) => prev.filter((m) => m.id !== retryId));
+          return doFetch(1);
+        }
         setMessages((prev) => [
           ...prev,
-          {
-            id: `a-${Date.now()}`,
-            role: "ai",
-            content: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.",
-            error: String(msg),
-          },
+          { id: `a-${Date.now()}`, role: "ai" as const, content: getErrorMsg(529) },
         ]);
         return;
       }
+
+      // 429 / 5xx
+      if (!res.ok) {
+        const status = res.status;
+        setMessages((prev) => [
+          ...prev,
+          { id: `a-${Date.now()}`, role: "ai" as const, content: getErrorMsg(status) },
+        ]);
+        return;
+      }
+
+      const json = await res.json();
+      if (!json.ok) {
+        setMessages((prev) => [
+          ...prev,
+          { id: `a-${Date.now()}`, role: "ai" as const, content: "연결에 문제가 발생했습니다. 다시 시도해 주세요." },
+        ]);
+        return;
+      }
+
       let analysis = json.data as Analysis;
 
       // /api/law/analyze 응답이 빈 인용인 경우 보강 라우트를 추가 호출해 병합
@@ -322,35 +356,46 @@ export default function LegalChatbot() {
           // enrich 실패 시 기본 응답 유지
         }
       }
+
       const aiContent = analysis.narrative || analysis.summary;
       setMessages((prev) => [
         ...prev,
-        {
-          id: `a-${Date.now()}`,
-          role: "ai",
-          content: aiContent,
-          analysis,
-        },
+        { id: `a-${Date.now()}`, role: "ai", content: aiContent, analysis },
       ]);
       setConversationHistory((prev) => [
         ...prev,
         { role: "user", content: q },
         { role: "model", content: aiContent.slice(0, 800) },
       ]);
+    };
+
+    try {
+      await doFetch(0);
     } catch (err) {
+      void err;
       setMessages((prev) => [
         ...prev,
-        {
-          id: `a-${Date.now()}`,
-          role: "ai",
-          content: "네트워크 오류가 발생했습니다.",
-          error: err instanceof Error ? err.message : "unknown error",
-        },
+        { id: `a-${Date.now()}`, role: "ai", content: "연결에 문제가 발생했습니다. 다시 시도해 주세요." },
       ]);
     } finally {
       setThinking(false);
     }
   }, [input, thinking, conversationHistory]);
+
+  /** "판례 없음" 응답 차단 — 이 문구를 포함한 항목 필터링 */
+  const PRECEDENT_BLOCK_PHRASES = [
+    "찾지 못했습니다",
+    "직접 검색하세요",
+    "판례가 없습니다",
+    "검색 결과가 없습니다",
+    "관련 판례가 없",
+    "존재하지 않습니다",
+  ];
+
+  const isPrecedentBlocked = (item: PrecedentAIItem): boolean => {
+    const text = `${item.facts} ${item.disposition} ${item.caseNo} ${item.relevance}`;
+    return PRECEDENT_BLOCK_PHRASES.some((phrase) => text.includes(phrase));
+  };
 
   const searchPrecedentsAI = useCallback(async () => {
     if (precSearching || !latestAnalysis) return;
@@ -370,18 +415,25 @@ export default function LegalChatbot() {
       ]);
       const json = await res.json();
       if (json.ok && Array.isArray(json.items) && json.items.length > 0) {
-        setPrecItems(json.items);
-        setPrecInterpretation(json.interpretation ?? null);
-        // 순차 등장: 500ms 간격으로 카드 표시
-        json.items.forEach((_: unknown, i: number) => {
-          setTimeout(() => setPrecVisible((v) => Math.max(v, i + 1)), i * 500);
-        });
+        // "판례 없음" 문구 포함 항목 차단
+        const validItems = (json.items as PrecedentAIItem[]).filter(
+          (item) => !isPrecedentBlocked(item)
+        );
+        if (validItems.length > 0) {
+          setPrecItems(validItems);
+          setPrecInterpretation(json.interpretation ?? null);
+          // 순차 등장: 500ms 간격으로 카드 표시
+          validItems.forEach((_: unknown, i: number) => {
+            setTimeout(() => setPrecVisible((v) => Math.max(v, i + 1)), i * 500);
+          });
+        }
       }
     } catch {
       /* noop */
     } finally {
       setPrecSearching(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [precSearching, latestAnalysis]);
 
   // 온보딩 칩/버튼 클릭 핸들러 — send 선언 이후에 위치해야 함
