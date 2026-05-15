@@ -581,32 +581,41 @@ export async function enhanceRiskWithGemini(
 
 function toRulesOnly(base: RiskAnalysis): EnhancedRiskAnalysis {
   const top = base.citations[0];
+  const riskSign = base.riskScore >= 40 ? "❌" : "✅";
+  const riskLabel =
+    base.riskScore >= 70 ? "높음" : base.riskScore >= 40 ? "중간" : "낮음";
   const narrative = [
-    `[상황 진단]`,
-    `이 상황은 규칙 엔진 분석 기준 ${base.riskScore}% (${base.riskLevel}) 리스크로 판정됩니다.` +
-      ` 핵심은 ${base.summary.split("\n")[0]}`,
+    `[VERDICT]`,
+    `${riskSign} 리스크 ${riskLabel}으로 판정됩니다`,
+    `리스크 ${base.riskScore}% — ${top ? `${top.statute} ${top.clause}` : "관련 법령 검토 필요"}: ${base.summary.split("\n")[0].slice(0, 80)}`,
     ``,
-    `[법령 근거]`,
+    `[WHY]`,
     top
-      ? `가장 먼저 적용될 조항은 ${top.statute} ${top.clause} 입니다. ` +
-        `해당 조항 기준으로 사실관계 입증이 필요합니다.`
-      : `직접 인용 조항을 추출하지 못했습니다. 유사 사례는 청탁금지법·이해충돌방지법을 1차 기준으로 검토합니다.`,
+      ? `적용 조항: ${top.statute} ${top.clause}${top.excerpt ? ` — ${top.excerpt.slice(0, 100)}` : ""}`
+      : `청탁금지법·이해충돌방지법을 1차 기준으로 검토합니다.`,
+    `형사처벌(징역·벌금) 또는 행정처분(과태료·징계) 수위는 구체적 사실관계 확인 후 결정됩니다.`,
     ``,
-    `[변호사 조언]`,
-    `판단이 애매할수록 초기 대응(거절·보존·보고)을 즉시 문서화하고, 사실관계별 증거를 시간순으로 정리하세요.`,
+    `[CASE]`,
+    `사실관계: 규칙 엔진 기준 판정 — AI 상세 분석이 일시적으로 불가합니다`,
+    `처분결과: 형사/행정 처분 수위는 사실관계 확인 후 결정 [추정]`,
+    `출처: 규칙 엔진 / ${new Date().getFullYear()} / 추가 확인 권장`,
     ``,
-    `[권고 조치]`,
-    ...base.recommendations
-      .slice(0, 5)
-      .map((r, i) => `${i + 1}. ${r.replace(/^\s*\d+\.\s*/, "")}`),
+    `[ACTION]`,
+    `① 상대방에게 직접 말하지 말 것 — 상황을 즉시 서면으로 기록하세요.`,
+    `② 국민권익위 청렴포털 www.clean.go.kr 에서 익명 신고 또는 상담 (24시간)`,
+    `③ 공익신고자보호법 제13조·제15조에 의한 신분 보호 적용`,
+    ``,
+    `[NEXT]`,
+    `이 상황에서 신고 절차는 어떻게 되나요?`,
+    `비슷한 사례의 실제 처분 수위가 궁금합니다.`,
   ].join("\n");
   return {
     ...base,
     narrative,
     keyIssues: base.citations.map((c) => `${c.statute} · ${c.clause}`),
     followUpQuestions: [
-      "유사 사례의 실제 징계 수위가 궁금합니다.",
-      "내부 신고 절차를 구체적으로 알려주세요.",
+      "이 상황에서 신고 절차는 어떻게 되나요?",
+      "비슷한 사례의 실제 처분 수위가 궁금합니다.",
     ],
     engine: "rules-only",
     confidence: "medium",

@@ -256,9 +256,18 @@ function VerdictBanner({
   riskLine: string;
 }) {
   const ok = sign === "✅";
-  const accent = ok ? "#4ade80" : "#f87171";
-  const bg = ok ? "rgba(74,222,128,0.07)" : "rgba(248,113,113,0.07)";
-  const border = ok ? "rgba(74,222,128,0.22)" : "rgba(248,113,113,0.22)";
+  const isUnknown = sign === null;
+  const accent = ok ? "#4ade80" : isUnknown ? "#fb923c" : "#f87171";
+  const bg = ok
+    ? "rgba(74,222,128,0.07)"
+    : isUnknown
+    ? "rgba(251,146,60,0.07)"
+    : "rgba(248,113,113,0.07)";
+  const border = ok
+    ? "rgba(74,222,128,0.22)"
+    : isUnknown
+    ? "rgba(251,146,60,0.22)"
+    : "rgba(248,113,113,0.22)";
 
   return (
     <div
@@ -285,7 +294,7 @@ function VerdictBanner({
             lineHeight: 1.35,
           }}
         >
-          {text || "판정 결과를 분석 중입니다"}
+          {text || "법적 판정 결과"}
         </p>
         {riskLine && (
           <p
