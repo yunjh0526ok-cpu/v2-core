@@ -1309,7 +1309,9 @@ function MessageBubble({
             {/* ── 서식 자동 생성 버튼 ── */}
             {(() => {
               const formInfo = detectFormType(msg.analysis!);
-              if (!formInfo || !onFormRequest) return null;
+              const narrative = msg.analysis!.narrative ?? "";
+              const isCleanVerdict = /\[VERDICT\][\s\S]{0,30}✅/.test(narrative);
+              if (!formInfo || !onFormRequest || isCleanVerdict) return null;
               return (
                 <div className="mt-3 border-t border-white/5 pt-3">
                   <p className="mb-1.5 text-[9.5px] font-black uppercase tracking-[0.15em] text-white/35">
