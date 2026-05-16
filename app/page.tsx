@@ -71,7 +71,7 @@ export default function Dashboard() {
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <Link
-              href="/legal-defense-draft"
+              href="/legal-guide"
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 via-indigo-500 to-violet-500 px-6 py-3 text-base font-black text-white sky-glow hover:opacity-95"
             >
               지금 시작하기

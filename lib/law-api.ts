@@ -918,17 +918,18 @@ function extractKrwAmount(text: string): number {
 /* ── 5-3. 청탁금지법 3·5·10 임계값 교차검사 ──────────────────────────── */
 
 /**
- *  식사 3만 / 선물 5만(명절·농수산물 15/20) / 경조사비 5만 / 화환 10만
+ *  2024년 1월 1일 개정 기준
+ *  식사 5만(구 3만→개정) / 선물 5만(명절·농수산물 15/30) / 경조사비 5만 / 화환 10만
  */
 function check3510(sig: Signals): { delta: number; detail: string } | null {
   if (sig.cheongtakContext === "none" || sig.krw === 0) return null;
-  const t = { meal: 30_000, gift: 50_000, ceremony: 50_000 }[sig.cheongtakContext];
+  const t = { meal: 50_000, gift: 50_000, ceremony: 50_000 }[sig.cheongtakContext]; // 2024.1.1 개정: 음식물 5만원
   const krw = sig.krw;
   const ratio = krw / t;
-  if (ratio <= 0.5) return { delta: 8, detail: `금액 ${formatWon(krw)} — 3·5·10 기준(${formatWon(t)}) 이하, 단순 주의 수준` };
-  if (ratio <= 1)   return { delta: 18, detail: `금액 ${formatWon(krw)} — 3·5·10 기준 근접` };
-  if (ratio <= 3)   return { delta: 32, detail: `금액 ${formatWon(krw)} — 3·5·10 기준(${formatWon(t)}) 초과` };
-  return { delta: 45, detail: `금액 ${formatWon(krw)} — 기준 ${Math.round(ratio)}배 초과, 형사처벌 구간 가능성` };
+  if (ratio <= 0.5) return { delta: 8, detail: `금액 ${formatWon(krw)} — 청탁금지법 상한(${formatWon(t)}) 이하, 단순 주의 수준` };
+  if (ratio <= 1)   return { delta: 18, detail: `금액 ${formatWon(krw)} — 청탁금지법 상한(${formatWon(t)}) 근접` };
+  if (ratio <= 3)   return { delta: 32, detail: `금액 ${formatWon(krw)} — 청탁금지법 상한(${formatWon(t)}) 초과` };
+  return { delta: 45, detail: `금액 ${formatWon(krw)} — 상한 ${Math.round(ratio)}배 초과, 형사처벌 구간 가능성` };
 }
 
 function formatWon(n: number): string {
@@ -1224,7 +1225,7 @@ function defaultRecs(scenario: Scenario, sig: Signals): string[] {
       recs.push("수수 즉시 반환·거절 후 소속기관 청렴옴부즈만에게 서면 신고");
       recs.push("영수증·카드내역·대화내역을 즉시 캡처하여 증거 보존");
       if (sig.cheongtakContext === "meal")
-        recs.push("식사 3만원 기준 초과 여부 확인(1인 기준)");
+        recs.push("식사 5만원 기준 초과 여부 확인(1인 기준, 2024년 1월 1일 개정)");
       break;
     case "ihae":
       recs.push("사적이해관계자 14일 내 서면 신고 및 직무 회피 신청");

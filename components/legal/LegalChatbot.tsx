@@ -517,6 +517,20 @@ export default function LegalChatbot() {
         </div>
 
         <div className="border-t border-white/5 px-4 py-4 md:px-5">
+          {/* ── 전체 대화 PDF 저장 ── */}
+          {messages.filter((m) => m.id !== "m0").length > 0 && (
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => printAllConversations(messages)}
+                className="flex items-center gap-1.5 rounded-lg border border-violet-400/35 bg-violet-500/10 px-3 py-1.5 text-[11.5px] font-black text-violet-200 transition-all hover:border-violet-400/65 hover:bg-violet-500/20"
+              >
+                <FileDown className="h-3.5 w-3.5" />
+                전체 대화 PDF 저장
+              </button>
+            </div>
+          )}
+
           {/* ── 예시 질문 sky/violet 대형 칩 마퀴 ── */}
           <div className="chip-marquee-wrap mb-3 py-1">
             <div className="chip-marquee-track">
@@ -935,6 +949,97 @@ ${relatedItems ? `<div class="section">
   }
 }
 
+/** 전체 대화를 하나의 PDF로 출력 */
+function printAllConversations(messages: Message[]) {
+  const convo = messages.filter((m) => m.id !== "m0"); // 웰컴 메시지 제외
+
+  const pairs: { question: string; answer: string; riskScore?: number; riskLevel?: string }[] = [];
+  for (let i = 0; i < convo.length; i++) {
+    const m = convo[i];
+    if (m.role === "user") {
+      const next = convo[i + 1];
+      pairs.push({
+        question: m.content,
+        answer: next?.content ?? "",
+        riskScore: next?.analysis?.riskScore,
+        riskLevel: next?.analysis?.riskLevel,
+      });
+      i++; // skip paired ai message
+    }
+  }
+
+  const riskBadge = (score?: number, level?: string) => {
+    if (!score) return "";
+    const color = level === "CRITICAL" ? "#f472b6" : score >= 65 ? "#a78bfa" : score >= 40 ? "#818cf8" : "#38bdf8";
+    return `<span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;background:${color}22;color:${color};border:1px solid ${color}55">${level ?? ""} ${score}%</span>`;
+  };
+
+  const pairsHtml = pairs
+    .map(
+      (p, i) => `
+        <div class="qa-pair">
+          <div class="question">
+            <span class="q-label">Q${i + 1}</span>
+            ${p.question}
+          </div>
+          <div class="answer">
+            <div class="a-header">
+              <span class="a-label">A${i + 1}</span>
+              ${riskBadge(p.riskScore, p.riskLevel)}
+            </div>
+            <div class="a-body">${p.answer.replace(/\n/g, "<br>")}</div>
+          </div>
+        </div>
+        ${i < pairs.length - 1 ? '<hr class="divider">' : ""}
+      `
+    )
+    .join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>LexGuard AI 전체 상담 기록</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 30mm; }
+  * { box-sizing: border-box; }
+  body { font-family:'Noto Sans KR','Apple SD Gothic Neo',Arial,sans-serif; font-size:13px; color:#1a1a2e; line-height:1.75; margin:0; }
+  header { display:flex; align-items:center; justify-content:space-between; border-bottom:3px solid #3366cc; padding-bottom:12px; margin-bottom:20px; }
+  header h1 { font-size:20px; color:#0d1f3d; margin:0; }
+  header .meta { font-size:11px; color:#888; }
+  .qa-pair { margin-bottom:18px; }
+  .question { background:#f0f6ff; border-left:4px solid #3366cc; padding:10px 14px; border-radius:0 6px 6px 0; margin-bottom:10px; font-size:13px; }
+  .q-label { display:inline-block; font-weight:900; color:#3366cc; margin-right:8px; font-size:12px; }
+  .answer { border:1px solid #dde8ff; border-radius:8px; padding:12px 14px; }
+  .a-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .a-label { font-weight:900; color:#6b7280; font-size:11px; }
+  .a-body { font-size:12.5px; color:#1a1a2e; white-space:pre-wrap; line-height:1.7; }
+  .divider { border:none; border-top:1px solid #e5e7eb; margin:18px 0; }
+  .disclaimer { font-size:10px; color:#999; border-top:1px solid #ddd; margin-top:24px; padding-top:8px; font-style:italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚖ LexGuard AI 전체 상담 기록</h1>
+  <div class="meta">출력일: ${new Date().toLocaleString("ko-KR")} &nbsp;|&nbsp; 총 ${pairs.length}건</div>
+</header>
+${pairsHtml}
+<p class="disclaimer">
+  본 상담 기록은 국가법령정보 API 기반의 AI 자동 분석으로, 법적 효력이 없습니다.
+  구체적인 사안은 반드시 전문 법률가의 조언을 받으시기 바랍니다.
+  LexGuard AI — lexguardai.vercel.app
+</p>
+</body>
+</html>`;
+
+  const w = window.open("", "_blank", "width=900,height=700");
+  if (w) {
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 600);
+  }
+}
+
 function MessageBubble({
   msg,
   onFollowUp,
@@ -1027,20 +1132,6 @@ function MessageBubble({
               </div>
             )}
 
-            {/* PDF 다운로드 버튼 */}
-            <div className="mt-4 border-t border-white/5 pt-3">
-              <button
-                type="button"
-                onClick={() => printLegalAnalysis(msg.analysis!, msg.analysis!.prompt)}
-                className="flex items-center gap-2 rounded-xl border border-violet-400/40 bg-violet-500/10 px-4 py-2.5 text-[13px] font-black text-violet-200 transition-all hover:border-violet-400/70 hover:bg-violet-500/20"
-              >
-                <FileDown className="h-4 w-4" />
-                PDF 저장
-              </button>
-              <p className="mt-1.5 text-[10px] text-white/30">
-                질문 · 분석 · 법령 근거 · 권고 조치 전체 포함
-              </p>
-            </div>
           </div>
         ) : parsed && parsed.length > 0 ? (
           // 기존 섹션 렌더러 (분석 없는 구조화 텍스트)
