@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Building2,
   Users,
@@ -81,7 +82,26 @@ const STEPS: { label: string; desc: string }[] = [
   { label: "AI 제안서 미리보기", desc: "맞춤 커리큘럼을 확인하세요" },
 ];
 
+/** 상담 이슈 → RISK_TAGS ID 매핑 */
+const ISSUE_TO_RISK_IDS: Record<string, string[]> = {
+  "이해충돌": ["conflict"],
+  "청탁금지": ["gift"],
+  "갑질":    ["harass"],
+  "부당지시": ["power"],
+  "공익신고": ["harass"], // 가장 유사한 태그
+};
+
+/** ContextBar orgType → ApplyWizard orgScale 매핑 */
+const ORGTYPE_TO_SCALE: Record<string, string> = {
+  "중앙부처·청":    "공공기관/지자체",
+  "광역시도·지자체": "공공기관/지자체",
+  "공기업·공공기관": "공공기관/지자체",
+  "교육기관·교육청": "공공기관/지자체",
+  "군·경찰·소방":   "공공기관/지자체",
+};
+
 export default function ApplyWizard() {
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<Step>(0);
   const [form, setForm] = useState<FormState>({
     mode: "lecture",
@@ -101,6 +121,27 @@ export default function ApplyWizard() {
     timeline: "",
   });
   const [status, setStatus] = useState<SubmitStatus>({ kind: "idle" });
+  const [autoFilled, setAutoFilled] = useState(false);
+
+  /** URL 파라미터에서 상담 맥락 자동 주입 */
+  useEffect(() => {
+    if (!searchParams) return;
+    const issue   = searchParams.get("issue") ?? "";
+    const orgType = searchParams.get("orgType") ?? "";
+
+    const riskIds  = ISSUE_TO_RISK_IDS[issue] ?? [];
+    const orgScale = ORGTYPE_TO_SCALE[orgType] ?? "";
+
+    if (riskIds.length > 0 || orgScale) {
+      setForm((prev) => ({
+        ...prev,
+        selectedRisks: riskIds.length > 0 ? riskIds : prev.selectedRisks,
+        orgScale:       orgScale            || prev.orgScale,
+      }));
+      setAutoFilled(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectedTags = useMemo(
     () => RISK_TAGS.filter((r) => form.selectedRisks.includes(r.id)),
@@ -215,6 +256,21 @@ export default function ApplyWizard() {
         </div>
 
         <Stepper step={step} />
+
+        {/* ── AI 상담 맥락 자동 입력 안내 ── */}
+        {autoFilled && (
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/[0.08] px-4 py-2.5">
+            <span className="text-base">✅</span>
+            <div>
+              <p className="text-[12.5px] font-black text-white">
+                AI 상담 내용 기반 자동 입력
+              </p>
+              <p className="text-[11px] font-semibold text-white/60">
+                Legal-Guide 상담에서 감지된 리스크가 2단계에 미리 선택됐습니다. 확인 후 진행하세요.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="mt-6">
           {step === 0 && (

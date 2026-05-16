@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { readAndClearHandoff } from "@/lib/chatHandoff";
@@ -197,6 +198,17 @@ function detectFormType(analysis: Analysis): FormInfo | null {
     return { name: "직장내괴롭힘 신고서", label: "직장내괴롭힘 신고서 작성" };
 
   return null;
+}
+
+/** 분석 내용에서 강의 CTA 이슈 유형 감지 */
+function detectCtaIssue(analysis: Analysis): string {
+  const text = (analysis.prompt ?? "") + " " + (analysis.narrative ?? "") + " " + (analysis.summary ?? "");
+  if (/이해충돌|사적이해관계/.test(text)) return "이해충돌";
+  if (/금품|선물|떡값|뇌물|청탁/.test(text)) return "청탁금지";
+  if (/부당지시|부당한\s*지시|강요/.test(text)) return "부당지시";
+  if (/공익신고|내부고발/.test(text)) return "공익신고";
+  if (/갑질|직장내\s*괴롭힘|괴롭힘|심부름|폭언/.test(text)) return "갑질";
+  return "";
 }
 
 /** ChatHandoff → Analysis 객체 빌더 (순수 함수, 부수효과 없음) */
@@ -631,6 +643,7 @@ export default function LegalChatbot() {
   }, [searchParams, send]);
 
   return (
+    <div className="space-y-5">
     <div className="grid min-w-0 gap-5 lg:grid-cols-[2fr_1fr] lg:gap-6">
       {/* CHAT PANEL */}
       <section className="glass flex h-[70vh] min-h-[520px] min-w-0 flex-col overflow-hidden rounded-3xl lg:h-[75vh]">
@@ -791,15 +804,6 @@ export default function LegalChatbot() {
           </div>
         </div>
       </section>
-
-      {/* ── 서식 자동 생성 모달 ── */}
-      {formModal && (
-        <FormDraftModal
-          formName={formModal.formName}
-          draft={formModal.draft}
-          onClose={() => setFormModal(null)}
-        />
-      )}
 
       {/* ANALYSIS PANEL */}
       <section className="min-w-0 space-y-4">
@@ -990,6 +994,21 @@ export default function LegalChatbot() {
           )}
         </div>
       </section>
+    </div>{/* end grid */}
+
+      {/* ── 서식 자동 생성 모달 ── */}
+      {formModal && (
+        <FormDraftModal
+          formName={formModal.formName}
+          draft={formModal.draft}
+          onClose={() => setFormModal(null)}
+        />
+      )}
+
+      {/* ── 강의 연계 CTA ── */}
+      {latestAnalysis && (
+        <LectureCTABlock issue={detectCtaIssue(latestAnalysis)} />
+      )}
     </div>
   );
 }
@@ -1007,6 +1026,57 @@ function EngineBadge({ engine }: { engine: Analysis["engine"] }) {
       <Brain className="h-3 w-3" />
       {gemini ? "Gemini+Rules" : "Rules Only"}
     </span>
+  );
+}
+
+/** 강의 연계 CTA 블록 — 상담 분석 후 하단에 고정 표시 */
+function LectureCTABlock({ issue }: { issue: string }) {
+  // 기관·직위 읽기 (클라이언트 전용)
+  let orgType = "";
+  let position = "";
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("lexguard_ctx");
+      if (raw) {
+        const ctx = JSON.parse(raw) as { orgType: string; position: string };
+        orgType = ctx.orgType ?? "";
+        position = ctx.position ?? "";
+      }
+    } catch { /* noop */ }
+  }
+
+  const params = new URLSearchParams();
+  if (issue) params.set("issue", issue);
+  if (orgType) params.set("orgType", orgType);
+  if (position) params.set("position", position);
+  const applyUrl = `/apply?${params.toString()}`;
+
+  return (
+    <div
+      className="rounded-2xl p-5 text-center"
+      style={{ border: "1.5px solid rgba(0,200,200,0.4)", background: "rgba(0,200,200,0.04)" }}
+    >
+      <div className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-white/30">
+        ━━ 강의 연계 ━━
+      </div>
+      <p className="text-[15px] font-black text-white">
+        이 주제로 우리 기관 맞춤 교육이 필요하신가요?
+      </p>
+      <p className="mt-2 text-[13px] font-bold" style={{ color: "#00c8c8" }}>
+        "AI 참여형 청렴·이해충돌·갑질예방 전문 강의"
+      </p>
+      <p className="mt-1 text-[12px] text-white/65">
+        주양순 대표강사 | 흥사단 투명사회운동본부
+      </p>
+      <p className="text-[11.5px] text-white/45">국가청렴권익교육원 등록 전문강사</p>
+      <Link
+        href={applyUrl}
+        className="mt-4 inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-[13px] font-black transition-all hover:opacity-85"
+        style={{ background: "#00c8c8", color: "#000" }}
+      >
+        기관 맞춤 강의 신청하기 →
+      </Link>
+    </div>
   );
 }
 
@@ -1092,9 +1162,17 @@ function printReport(report: string, today: string) {
     font-size: 10.5px; color: #888; font-style: italic;
     text-align: center; padding: 2px 0;
   }
+  .cta-block {
+    margin-top: 22px; border: 1.5px solid #00a8a8; border-radius: 8px;
+    padding: 14px 18px; text-align: center; background: #f0fafa;
+  }
+  .cta-block .cta-title { font-size: 13px; font-weight: 900; color: #1a1a2e; margin-bottom: 3px; }
+  .cta-block .cta-sub { font-size: 12px; font-weight: 700; color: #007a7a; }
+  .cta-block .cta-info { font-size: 11px; color: #666; margin-top: 3px; }
+  .cta-block .cta-url { font-size: 12px; font-weight: 900; color: #007a7a; margin-top: 6px; }
   .footer {
     font-size: 10px; color: #bbb; border-top: 1px solid #ddd;
-    margin-top: 22px; padding-top: 8px; font-style: italic;
+    margin-top: 16px; padding-top: 8px; font-style: italic;
   }
 </style>
 </head>
@@ -1105,6 +1183,12 @@ function printReport(report: string, today: string) {
 </div>
 <div class="report-body">
 ${htmlLines}
+</div>
+<div class="cta-block">
+  <div class="cta-title">이 주제로 우리 기관 맞춤 교육이 필요하신가요?</div>
+  <div class="cta-sub">AI 참여형 청렴·이해충돌·갑질예방 전문 강의</div>
+  <div class="cta-info">주양순 대표강사 | 흥사단 투명사회운동본부 | 국가청렴권익교육원 등록 전문강사</div>
+  <div class="cta-url">기관 맞춤 강의 신청: lexguardai.vercel.app/apply</div>
 </div>
 <p class="footer">
   본 리포트는 국가법령정보 API 기반의 AI 자동 분석으로, 법적 효력이 없습니다.
@@ -1248,6 +1332,26 @@ function MessageBubble({
                 </div>
               );
             })()}
+
+            {/* ── HIGH 리스크 교육 CTA (80% 이상) ── */}
+            {msg.analysis!.riskScore >= 80 && (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/20 bg-amber-500/[0.06] px-3 py-2">
+                <p className="text-[11px] font-semibold leading-snug text-amber-200/80">
+                  이 리스크, 우리 기관 전체가 모르고 있을 수 있습니다.
+                </p>
+                <Link
+                  href={`/apply?issue=${encodeURIComponent(detectCtaIssue(msg.analysis!))}`}
+                  className="shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-black whitespace-nowrap transition-all hover:opacity-85"
+                  style={{
+                    border: "1px solid rgba(0,200,200,0.35)",
+                    background: "rgba(0,200,200,0.1)",
+                    color: "#00c8c8",
+                  }}
+                >
+                  기관 교육 알아보기
+                </Link>
+              </div>
+            )}
 
           </div>
         ) : parsed && parsed.length > 0 ? (
