@@ -19,9 +19,11 @@ import {
   CheckCircle2,
   Mic,
   MicOff,
+  FileText,
 } from "lucide-react";
 import LegalAnalysisCards from "@/components/legal/LegalAnalysisCards";
 import LegalOnboarding from "@/components/legal/LegalOnboarding"; // onboarding-v2
+import FormDraftModal from "@/components/legal/FormDraftModal";
 // searchPrecedentsClient 제거 — glaw.scourt.go.kr 공개 API 아님, Gemini 기반으로 전환
 
 /**
@@ -164,6 +166,39 @@ const WELCOME_MSG: Message = {
     "안녕하세요. Ethics-Core AI Legal-Guide 입니다. 현재 고민 중인 상황을 한 줄로 적어주세요. 국가법령정보 API로 실시간 조문을 조회하고, Gemini LLM 으로 분석을 강화하여 리스크%·근거·즉시 조치를 돌려드립니다. 상담 내역은 자동으로 Intelligence Hub 통계에 반영됩니다.",
 };
 
+/* ── 서식 자동 생성 ── */
+type FormInfo = {
+  name: string;
+  label: string;
+};
+
+/**
+ * AI 분석 내용(프롬프트 + 내러티브)에서 키워드를 감지해
+ * 어떤 공문서 서식이 필요한지 자동 판단한다.
+ * 우선순위: 이해충돌 > 금품 > 부당지시 > 공익신고 > 갑질
+ */
+function detectFormType(analysis: Analysis): FormInfo | null {
+  const text =
+    (analysis.prompt ?? "") +
+    " " +
+    (analysis.narrative ?? "") +
+    " " +
+    (analysis.summary ?? "");
+
+  if (/이해충돌|사적이해관계/.test(text))
+    return { name: "사적이해관계 신고서", label: "사적이해관계 신고서 작성" };
+  if (/금품|선물|떡값|상품권|촌지|뇌물/.test(text))
+    return { name: "금품 반환 확인서", label: "금품 반환 확인서 작성" };
+  if (/부당지시|부당한\s*지시|강요/.test(text))
+    return { name: "부당지시 거부 경위서", label: "부당지시 거부 경위서 작성" };
+  if (/공익신고|내부고발/.test(text))
+    return { name: "공익신고서", label: "공익신고서 초안 작성" };
+  if (/갑질|직장내\s*괴롭힘|괴롭힘|심부름|폭언/.test(text))
+    return { name: "직장내괴롭힘 신고서", label: "직장내괴롭힘 신고서 작성" };
+
+  return null;
+}
+
 /** ChatHandoff → Analysis 객체 빌더 (순수 함수, 부수효과 없음) */
 function buildAnalysisFromHandoff(h: import("@/lib/chatHandoff").ChatHandoff): Analysis {
   return {
@@ -204,6 +239,10 @@ export default function LegalChatbot() {
   const [interviewMode, setInterviewMode] = useState(false);
   const [interviewPhase, setInterviewPhase] = useState<"idle" | "questioning">("idle");
   const [pendingInterviewPrompt, setPendingInterviewPrompt] = useState("");
+
+  // ── 서식 자동 생성 ──
+  const [formModal, setFormModal] = useState<{ formName: string; draft: string } | null>(null);
+  const [generatingFormId, setGeneratingFormId] = useState<string | null>(null);
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -452,6 +491,37 @@ export default function LegalChatbot() {
   }, [input, thinking, conversationHistory, interviewMode, interviewPhase, pendingInterviewPrompt]);
 
 
+  // ── 서식 요청 핸들러 ──
+  const handleFormRequest = useCallback(async (msg: Message) => {
+    if (!msg.analysis) return;
+    const formInfo = detectFormType(msg.analysis);
+    if (!formInfo) return;
+
+    setGeneratingFormId(msg.id);
+
+    const today = new Date().toLocaleDateString("ko-KR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const context = `사용자 질문: ${msg.analysis.prompt}\n\nAI 분석 내용:\n${msg.analysis.narrative}`;
+
+    try {
+      const res = await fetch("/api/law/form-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ formName: formInfo.name, context, today }),
+      });
+      const json = await res.json();
+      if (json.ok && json.draft) {
+        setFormModal({ formName: formInfo.name, draft: json.draft });
+      }
+    } catch { /* noop */ }
+    finally {
+      setGeneratingFormId(null);
+    }
+  }, []);
+
   // 온보딩 칩/버튼 클릭 핸들러 — send 선언 이후에 위치해야 함
   const handleOnboardingStart = useCallback((q?: string) => {
     setOnboardingDismissed(true); // 온보딩 즉시 닫고 채팅으로 전환
@@ -509,7 +579,13 @@ export default function LegalChatbot() {
             <LegalOnboarding onStart={handleOnboardingStart} />
           ) : (
             messages.map((m) => (
-              <MessageBubble key={m.id} msg={m} onFollowUp={send} />
+              <MessageBubble
+                key={m.id}
+                msg={m}
+                onFollowUp={send}
+                onFormRequest={handleFormRequest}
+                formLoading={generatingFormId === m.id}
+              />
             ))
           )}
           {thinking && <GridAnalysisLoader />}
@@ -625,6 +701,15 @@ export default function LegalChatbot() {
           </div>
         </div>
       </section>
+
+      {/* ── 서식 자동 생성 모달 ── */}
+      {formModal && (
+        <FormDraftModal
+          formName={formModal.formName}
+          draft={formModal.draft}
+          onClose={() => setFormModal(null)}
+        />
+      )}
 
       {/* ANALYSIS PANEL */}
       <section className="min-w-0 space-y-4">
@@ -1043,9 +1128,13 @@ ${pairsHtml}
 function MessageBubble({
   msg,
   onFollowUp,
+  onFormRequest,
+  formLoading,
 }: {
   msg: Message;
   onFollowUp: (text: string) => void;
+  onFormRequest?: (msg: Message) => void;
+  formLoading?: boolean;
 }) {
   const mine = msg.role === "user";
 
@@ -1131,6 +1220,37 @@ function MessageBubble({
                 </div>
               </div>
             )}
+
+            {/* ── 서식 자동 생성 버튼 ── */}
+            {(() => {
+              const formInfo = detectFormType(msg.analysis!);
+              if (!formInfo || !onFormRequest) return null;
+              return (
+                <div className="mt-3 border-t border-white/5 pt-3">
+                  <p className="mb-1.5 text-[9.5px] font-black uppercase tracking-[0.15em] text-white/35">
+                    공문서 서식
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onFormRequest(msg)}
+                    disabled={formLoading}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-black transition-all hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-55"
+                    style={{
+                      border: "1px solid rgba(0,200,200,0.5)",
+                      background: "rgba(0,200,200,0.09)",
+                      color: "#00c8c8",
+                    }}
+                  >
+                    {formLoading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <FileText className="h-3.5 w-3.5" />
+                    )}
+                    {formLoading ? "서식 작성 중…" : formInfo.label}
+                  </button>
+                </div>
+              );
+            })()}
 
           </div>
         ) : parsed && parsed.length > 0 ? (
