@@ -5,6 +5,7 @@ import { MessageSquare, FileSearch, Scale, Shield, Lightbulb, Gavel } from "luci
 import LegalChatbot from "@/components/legal/LegalChatbot";
 import DeepDiagnoseForm from "@/components/legal/DeepDiagnoseForm";
 import JudgmentAnalysis from "@/components/legal/JudgmentAnalysis";
+import ContextBar from "@/components/legal/ContextBar";
 import LegalPrecedentMarquee from "@/components/legal/LegalPrecedentMarquee";
 import Breadcrumbs from "@/components/nav/Breadcrumbs";
 
@@ -80,6 +81,9 @@ export default function LegalGuidePage() {
         </div>
       </section>
 
+
+      {/* CONTEXT BAR */}
+      <ContextBar />
 
       {/* TAB SWITCH */}
       <div className="flex w-full min-w-0 flex-wrap gap-2 rounded-2xl border border-white/10 bg-navy-900/60 p-2">

@@ -260,11 +260,23 @@ export default function LegalChatbot() {
       return "연결에 문제가 발생했습니다. 다시 시도해 주세요.";
     };
 
+    // localStorage 에서 기관·직위 맞춤 설정 읽기
+    let userContext: { orgType: string; position: string } | undefined;
+    try {
+      const raw = typeof window !== "undefined" ? localStorage.getItem("lexguard_ctx") : null;
+      if (raw) userContext = JSON.parse(raw) as { orgType: string; position: string };
+    } catch { /* noop */ }
+
     const doFetch = async (attempt: number): Promise<void> => {
       const res = await fetch("/api/law/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: q, clientPrecedents: [], history: conversationHistory }),
+        body: JSON.stringify({
+          prompt: q,
+          clientPrecedents: [],
+          history: conversationHistory,
+          ...(userContext ? { userContext } : {}),
+        }),
       });
 
       // 529 — AI 과부하: 1회 자동 재시도

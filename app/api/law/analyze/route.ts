@@ -49,6 +49,13 @@ const BodySchema = z.object({
     .max(20)
     .optional()
     .default([]),
+  /** 기관·직위 맞춤 설정 */
+  userContext: z
+    .object({
+      orgType: z.string().max(50),
+      position: z.string().max(30),
+    })
+    .optional(),
 });
 
 function stripMarkdown(text: string): string {
@@ -75,7 +82,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { prompt, department, userTag, persist, clientPrecedents, history } = parsed.data;
+  const { prompt, department, userTag, persist, clientPrecedents, history, userContext } = parsed.data;
 
   //  ── (1) 규칙 엔진 1차 분석 ───────────────────────────────────────
   let baseAnalysis = await analyzeRisk(prompt);
@@ -160,7 +167,7 @@ export async function POST(req: Request) {
   const publicEthicsQuery = isPublicEthicsQuery(prompt);
   const enhanced = publicEthicsQuery
     ? await enhanceRiskWithGemini(baseAnalysis, articles, history)
-    : await enhanceGeneralLegalWithGemini(baseAnalysis, articles, precedents, history);
+    : await enhanceGeneralLegalWithGemini(baseAnalysis, articles, precedents, history, userContext);
 
   //  ── (4) DB 에 상담 기록 저장 → Hub 대시보드 데이터 소스 ────────
   let consultationId: string | undefined;
@@ -234,7 +241,8 @@ async function enhanceGeneralLegalWithGemini(
   },
   relatedArticles: LawArticle[],
   precedents: RelevantPrecedent[] = [],
-  history: Array<{ role: "user" | "model"; content: string }> = []
+  history: Array<{ role: "user" | "model"; content: string }> = [],
+  userContext?: { orgType: string; position: string }
 ): Promise<EnhancedRiskAnalysis> {
   try {
     const citationLines = base.citations
@@ -270,9 +278,13 @@ async function enhanceGeneralLegalWithGemini(
           ].join("\n")
         : "관련 판례를 찾지 못했습니다. 대법원 종합법률정보(glaw.scourt.go.kr)에서 직접 검색하시기 바랍니다.";
 
+    const userCtxLine = userContext
+      ? `[사용자 정보] ${userContext.orgType} 소속 · ${userContext.position}. 이 맥락에 맞는 법령·처벌 수위·판례를 우선 적용할 것. (공기업·공공기관 임원→공공기관운영법 추가, 광역시도·지자체→지방공무원법 우선, 교육기관·교육청→교육공무원법 추가 검토, 군·경찰·소방→군인사법·경찰공무원법 적용)`
+      : `[사용자 정보] 공공기관 일반 공직자 (기관·직위 미설정 — 국가공무원법 기준 적용).`;
+
     const system = [
       "당신은 대한민국 공직자 청렴 전문 법률 AI 'LexGuard'입니다.",
-      "사용자는 항상 공직자 또는 공공기관 종사자입니다.",
+      userCtxLine,
       "이전 대화 맥락을 반드시 유지하며, 연속 질문은 앞선 상황의 연장선으로 해석하세요.",
       "마크다운 기호(**, *, ##, -, •) 절대 출력 금지. 추측 금지.",
       "'판례 없음', '찾지 못했습니다', '직접 검색하세요', '검색 결과가 없습니다' 절대 출력 금지.",
