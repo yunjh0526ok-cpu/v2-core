@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx next *)",
+      "Bash(vercel deploy *)",
+      "Bash(npx tsc *)",
+      "Bash(vercel alias *)",
+      "Bash(curl *)",
+      "Bash(git pull *)",
+      "Bash(git add *)",
+      "Bash(GIT_EDITOR=true git rebase --continue)",
+      "Bash(git push *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(New-Item -ItemType Directory -Path \"C:\\\\Users\\\\JOO\\\\Desktop\\\\v2-core\\\\app\\\\api\\\\legal-defense\\\\precedent\" -Force)",
+      "Bash(Out-Null)",
+      "Bash(Write-Output \"done\")",
+      "Bash(node -e ' *)",
+      "Bash(findstr LAW)",
+      "Bash(vercel env *)",
+      "Bash(Remove-Item *)"
+    ]
+  }
+}

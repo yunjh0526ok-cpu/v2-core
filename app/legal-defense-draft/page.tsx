@@ -528,7 +528,7 @@ export default function LegalDefenseDraftPage() {
             <p className="mt-1 text-xs text-sky-300">기관 프리셋: {result.orgPreset.label} · 문서접두: {result.orgPreset.docPrefix}</p>
             <p className="mt-1 text-xs text-steel-300">{result.template.objective}</p>
             <p className="mt-2 text-sm text-steel-200">{result.recommendedClause.rationale}</p>
-            <p className="mt-2 text-xs text-steel-400">RAG 소스: 법령 검색 {result.rag.lawSource} · 판례 {result.rag.precedentCount}건</p>
+            <p className="mt-2 text-xs text-steel-400">RAG 소스: 법령 검색 {result.rag.lawSource}</p>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
