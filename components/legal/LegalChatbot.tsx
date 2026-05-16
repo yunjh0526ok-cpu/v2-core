@@ -17,6 +17,8 @@ import {
   Brain,
   Lightbulb,
   CheckCircle2,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import LegalAnalysisCards from "@/components/legal/LegalAnalysisCards";
 import LegalOnboarding from "@/components/legal/LegalOnboarding"; // onboarding-v2
@@ -67,6 +69,8 @@ type Message = {
   content: string;
   analysis?: Analysis;
   error?: string;
+  /** 인터뷰 모드의 AI 질문 메시지 */
+  isInterview?: boolean;
 };
 
 const STARTER_TEMPLATES = [
@@ -196,6 +200,11 @@ export default function LegalChatbot() {
     Array<{ role: "user" | "model"; content: string }>
   >([]);
 
+  // ── 인터뷰 모드 ──
+  const [interviewMode, setInterviewMode] = useState(false);
+  const [interviewPhase, setInterviewPhase] = useState<"idle" | "questioning">("idle");
+  const [pendingInterviewPrompt, setPendingInterviewPrompt] = useState("");
+
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const autoSentRef = useRef(false);
@@ -267,12 +276,56 @@ export default function LegalChatbot() {
       if (raw) userContext = JSON.parse(raw) as { orgType: string; position: string };
     } catch { /* noop */ }
 
+    // ── 인터뷰 모드: 첫 메시지 → 확인 질문 ──
+    if (interviewMode && interviewPhase === "idle") {
+      setPendingInterviewPrompt(q);
+      setInterviewPhase("questioning");
+      try {
+        const res = await fetch("/api/law/interview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: q }),
+        });
+        const json = await res.json();
+        const questions: string = json.ok
+          ? json.questions
+          : "추가 정보를 알려주시면 더 정확히 분석할 수 있습니다.";
+        setMessages((prev) => [
+          ...prev,
+          { id: `a-${Date.now()}`, role: "ai" as const, content: questions, isInterview: true },
+        ]);
+        setConversationHistory((prev) => [
+          ...prev,
+          { role: "user", content: q },
+          { role: "model", content: questions.slice(0, 400) },
+        ]);
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          { id: `a-${Date.now()}`, role: "ai" as const, content: getErrorMsg(500) },
+        ]);
+        setInterviewPhase("idle");
+        setPendingInterviewPrompt("");
+      } finally {
+        setThinking(false);
+      }
+      return;
+    }
+
+    // ── 인터뷰 모드: 두 번째 메시지(답변) → 원래 상황 + 답변 결합해서 분석 ──
+    let analyzePrompt = q;
+    if (interviewMode && interviewPhase === "questioning" && pendingInterviewPrompt) {
+      analyzePrompt = `원래 상황: ${pendingInterviewPrompt}\n추가 정보: ${q}`;
+      setInterviewPhase("idle");
+      setPendingInterviewPrompt("");
+    }
+
     const doFetch = async (attempt: number): Promise<void> => {
       const res = await fetch("/api/law/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: q,
+          prompt: analyzePrompt,
           clientPrecedents: [],
           history: conversationHistory,
           ...(userContext ? { userContext } : {}),
@@ -396,7 +449,7 @@ export default function LegalChatbot() {
     } finally {
       setThinking(false);
     }
-  }, [input, thinking, conversationHistory]);
+  }, [input, thinking, conversationHistory, interviewMode, interviewPhase, pendingInterviewPrompt]);
 
 
   // 온보딩 칩/버튼 클릭 핸들러 — send 선언 이후에 위치해야 함
@@ -481,27 +534,77 @@ export default function LegalChatbot() {
             </div>
           </div>
 
+          {/* ── 인터뷰 모드 토글 + 배너 ── */}
+          <div className="mx-auto mb-2 flex w-full max-w-[88%] items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const next = !interviewMode;
+                setInterviewMode(next);
+                if (!next) {
+                  setInterviewPhase("idle");
+                  setPendingInterviewPrompt("");
+                }
+              }}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-black transition-all ${
+                interviewMode
+                  ? "border-teal-400/60 bg-teal-500/15 text-teal-200"
+                  : "border-white/10 bg-white/[0.03] text-steel-400 hover:border-white/20 hover:text-steel-200"
+              }`}
+            >
+              {interviewMode ? (
+                <Mic className="h-3 w-3" />
+              ) : (
+                <MicOff className="h-3 w-3" />
+              )}
+              AI 인터뷰 모드
+            </button>
+
+            {interviewMode && (
+              <span className="flex items-center gap-1.5 rounded-full border border-teal-400/30 bg-teal-500/10 px-3 py-1.5 text-[11px] font-black text-teal-200">
+                <Mic className="h-3 w-3 animate-pulse" />
+                {interviewPhase === "questioning"
+                  ? "AI 질문에 답변해 주세요"
+                  : "AI가 먼저 질문하고 정확히 진단합니다"}
+              </span>
+            )}
+          </div>
+
           {/* ── 질문 입력: 약 20% 축소 + sky-violet 그라데이션 보더 + 글로우 ── */}
           <div className="mx-auto w-full max-w-[88%]">
-            <div className="gradient-border rounded-xl bg-navy-900/80 sky-glow">
+            <div className={`gradient-border rounded-xl sky-glow ${interviewMode ? "bg-teal-950/60" : "bg-navy-900/80"}`}>
               <div className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5">
-                <Sparkles className="h-3.5 w-3.5 shrink-0 text-sky-300" />
+                {interviewMode ? (
+                  <Mic className="h-3.5 w-3.5 shrink-0 text-teal-300" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-sky-300" />
+                )}
                 <input
                   ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && send()}
-                  placeholder="상황을 한 줄로 적어주세요 · 예) 계약 업체가 명절 선물을 보내왔습니다."
+                  placeholder={
+                    interviewPhase === "questioning"
+                      ? "AI 질문에 답변해 주세요 · 예) 3만원짜리 상품권이고, 직무관련이 있습니다."
+                      : interviewMode
+                      ? "상황을 입력하면 AI가 먼저 확인 질문을 합니다."
+                      : "상황을 한 줄로 적어주세요 · 예) 계약 업체가 명절 선물을 보내왔습니다."
+                  }
                   className="min-w-0 flex-1 bg-transparent text-[12.5px] font-semibold text-white placeholder:text-steel-500 outline-none"
                 />
                 <button
                   type="button"
                   onClick={() => send()}
                   disabled={thinking || input.trim().length === 0}
-                  className="flex shrink-0 items-center gap-1 rounded-lg bg-gradient-to-r from-sky-500 via-indigo-500 to-violet-500 px-2.5 py-1.5 text-[11.5px] font-black text-white sky-glow disabled:opacity-50"
+                  className={`flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11.5px] font-black text-white sky-glow disabled:opacity-50 ${
+                    interviewMode
+                      ? "bg-gradient-to-r from-teal-500 via-cyan-500 to-sky-500"
+                      : "bg-gradient-to-r from-sky-500 via-indigo-500 to-violet-500"
+                  }`}
                 >
                   <Send className="h-3 w-3" />
-                  분석
+                  {interviewPhase === "questioning" ? "답변" : "분석"}
                 </button>
               </div>
             </div>
@@ -845,13 +948,39 @@ function MessageBubble({
   const hasAnalysis = !mine && !!msg.analysis;
 
   // 분석 없는 AI 메시지: 기존 섹션 파서 유지
-  const parsed = !mine && !hasAnalysis ? parseInstructorSections(msg.content) : null;
+  const parsed = !mine && !hasAnalysis && !msg.isInterview
+    ? parseInstructorSections(msg.content)
+    : null;
 
   if (mine) {
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] rounded-2xl px-5 py-4 text-[14px] font-semibold leading-[1.75] whitespace-pre-wrap bg-gradient-to-br from-sky-500 via-indigo-500 to-violet-500 text-white sky-glow">
           {msg.content}
+        </div>
+      </div>
+    );
+  }
+
+  // ── 인터뷰 질문 메시지 ──
+  if (msg.isInterview) {
+    return (
+      <div className="flex justify-start">
+        <div className="w-full max-w-[98%] min-w-0 rounded-2xl border border-teal-400/30 bg-teal-950/40 px-5 py-4">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-teal-500/20 border border-teal-400/40">
+              <Mic className="h-3 w-3 text-teal-300" />
+            </span>
+            <span className="text-[10.5px] font-black uppercase tracking-[0.13em] text-teal-400">
+              AI 인터뷰 · 확인 질문
+            </span>
+          </div>
+          <p className="whitespace-pre-wrap text-[13.5px] font-semibold leading-relaxed text-teal-50">
+            {msg.content}
+          </p>
+          <p className="mt-3 text-[10.5px] font-semibold text-teal-600">
+            위 질문에 답변하시면 정확한 리스크 판정·처벌 수위·판례를 제공합니다.
+          </p>
         </div>
       </div>
     );
