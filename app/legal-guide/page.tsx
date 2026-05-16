@@ -1,13 +1,14 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { MessageSquare, FileSearch, Scale, Shield, Lightbulb } from "lucide-react";
+import { MessageSquare, FileSearch, Scale, Shield, Lightbulb, Gavel } from "lucide-react";
 import LegalChatbot from "@/components/legal/LegalChatbot";
 import DeepDiagnoseForm from "@/components/legal/DeepDiagnoseForm";
+import JudgmentAnalysis from "@/components/legal/JudgmentAnalysis";
 import LegalPrecedentMarquee from "@/components/legal/LegalPrecedentMarquee";
 import Breadcrumbs from "@/components/nav/Breadcrumbs";
 
-type Tab = "chat" | "deep";
+type Tab = "chat" | "deep" | "judgment";
 
 export default function LegalGuidePage() {
   const [tab, setTab] = useState<Tab>("chat");
@@ -19,6 +20,11 @@ export default function LegalGuidePage() {
       ? [
           { label: "Legal-Guide", href: "/legal-guide" },
           { label: "부패방어 가이드 · Legal Chat" },
+        ]
+      : tab === "judgment"
+      ? [
+          { label: "Legal-Guide", href: "/legal-guide" },
+          { label: "판결문 심층분석" },
         ]
       : [
           { label: "Legal-Guide", href: "/legal-guide" },
@@ -91,24 +97,33 @@ export default function LegalGuidePage() {
           label="Deep Diagnose · 심층 진단"
           sub="구조화 입력 → PDF 리포트 형태 분석"
         />
+        <TabBtn
+          active={tab === "judgment"}
+          onClick={() => setTab("judgment")}
+          icon={<Gavel className="h-3.5 w-3.5" />}
+          label="판결문 심층분석"
+          sub="실제 판결·결정례 3건 ①②③④⑤ 심층 해설"
+        />
       </div>
 
-      {/* ── 탭별 질문 마퀴 — 부패방어 / 적극행정 가이드 분리 ── */}
-      <div className="min-w-0">
-        {tab === "chat" ? (
-          <LegalPrecedentMarquee
-            filter="corruption"
-            title="부패방어 · 실시간 질문 마퀴"
-            subtitle="청탁 · 이해충돌 · 복무 · 징계 실전 사례 — 클릭하면 AI 리포트"
-          />
-        ) : (
-          <LegalPrecedentMarquee
-            filter="active-admin"
-            title="적극행정 가이드 · 기관 맞춤 사례"
-            subtitle="적극행정 · 소극행정 · 규제개혁 · 면책 성공·실패 패턴"
-          />
-        )}
-      </div>
+      {/* ── 탭별 질문 마퀴 — 판결문 탭에서는 숨김 ── */}
+      {tab !== "judgment" && (
+        <div className="min-w-0">
+          {tab === "chat" ? (
+            <LegalPrecedentMarquee
+              filter="corruption"
+              title="부패방어 · 실시간 질문 마퀴"
+              subtitle="청탁 · 이해충돌 · 복무 · 징계 실전 사례 — 클릭하면 AI 리포트"
+            />
+          ) : (
+            <LegalPrecedentMarquee
+              filter="active-admin"
+              title="적극행정 가이드 · 기관 맞춤 사례"
+              subtitle="적극행정 · 소극행정 · 규제개혁 · 면책 성공·실패 패턴"
+            />
+          )}
+        </div>
+      )}
 
       <Suspense
         fallback={
@@ -117,7 +132,13 @@ export default function LegalGuidePage() {
           </div>
         }
       >
-        {tab === "chat" ? <LegalChatbot /> : <DeepDiagnoseForm />}
+        {tab === "chat" ? (
+          <LegalChatbot />
+        ) : tab === "judgment" ? (
+          <JudgmentAnalysis />
+        ) : (
+          <DeepDiagnoseForm />
+        )}
       </Suspense>
     </div>
   );

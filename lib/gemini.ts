@@ -381,7 +381,7 @@ export async function enhanceRiskWithGemini(
     "",
     "▶ 질문 유형 자동 분류 — summaryKo 에 유형별 포맷만 사용:",
     "· 리스크 판정(~해도 되나요, ~위법인가요, ~괜찮나요, ~받아도 되나요): [VERDICT][WHY][CASE][ACTION][NEXT]",
-    "· 판례·정보 요청(판례, 사례, 처벌이 어떻게, 자세히, 상세히): [CASES][INTERP]",
+    "· 판례·정보 요청(판례, 판결문, 사례, 처벌이 어떻게, 분석, 요약, 자세히, 상세히, 어떤 처벌, 어떻게 되나요): [CASES][INTERP] — 절대 [VERDICT] 포맷 사용 금지",
     "· 신고·후속행동(신고하면, 어떻게 하나요, 거부하면, 불이익): [GUIDE]",
     "",
     "══ 유형A: [VERDICT][WHY][CASE][ACTION][NEXT] ══",
