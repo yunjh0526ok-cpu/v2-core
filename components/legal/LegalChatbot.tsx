@@ -13,13 +13,13 @@ import {
   Loader2,
   Database,
   AlertTriangle,
-  FileDown,
   Brain,
   Lightbulb,
   CheckCircle2,
   Mic,
   MicOff,
   FileText,
+  ClipboardList,
 } from "lucide-react";
 import LegalAnalysisCards from "@/components/legal/LegalAnalysisCards";
 import LegalOnboarding from "@/components/legal/LegalOnboarding"; // onboarding-v2
@@ -243,6 +243,10 @@ export default function LegalChatbot() {
   // ── 서식 자동 생성 ──
   const [formModal, setFormModal] = useState<{ formName: string; draft: string } | null>(null);
   const [generatingFormId, setGeneratingFormId] = useState<string | null>(null);
+
+  // ── 전체 상담 리포트 ──
+  const [reportLoading, setReportLoading] = useState(false);
+  const [generatedForms, setGeneratedForms] = useState<string[]>([]);
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -515,12 +519,93 @@ export default function LegalChatbot() {
       const json = await res.json();
       if (json.ok && json.draft) {
         setFormModal({ formName: formInfo.name, draft: json.draft });
+        // 리포트용 서식 목록 누적
+        setGeneratedForms((prev) =>
+          prev.includes(formInfo.name) ? prev : [...prev, formInfo.name]
+        );
       }
     } catch { /* noop */ }
     finally {
       setGeneratingFormId(null);
     }
   }, []);
+
+  // ── 전체 상담 리포트 생성 핸들러 ──
+  const handleReport = useCallback(async () => {
+    setReportLoading(true);
+
+    // messages → Q&A 페어 추출
+    const convo = messages.filter((m) => m.id !== "m0");
+    const conversations: Array<{
+      question: string;
+      answer: string;
+      riskScore?: number;
+      riskLevel?: string;
+      citations?: Citation[];
+    }> = [];
+
+    for (let i = 0; i < convo.length; i++) {
+      const m = convo[i];
+      if (m.role === "user") {
+        const next = convo[i + 1];
+        if (next?.role === "ai" && next.analysis) {
+          conversations.push({
+            question: m.content,
+            answer: next.analysis.narrative || next.analysis.summary,
+            riskScore: next.analysis.riskScore,
+            riskLevel: next.analysis.riskLevel,
+            citations: next.analysis.citations,
+          });
+          i++; // skip paired ai message
+        }
+      }
+    }
+
+    if (conversations.length === 0) {
+      setReportLoading(false);
+      return;
+    }
+
+    // 기관·직위 맞춤 설정 읽기
+    let orgType: string | undefined;
+    let position: string | undefined;
+    try {
+      const raw = typeof window !== "undefined" ? localStorage.getItem("lexguard_ctx") : null;
+      if (raw) {
+        const ctx = JSON.parse(raw) as { orgType: string; position: string };
+        orgType = ctx.orgType;
+        position = ctx.position;
+      }
+    } catch { /* noop */ }
+
+    const today = new Date().toLocaleDateString("ko-KR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      weekday: "long",
+    });
+
+    try {
+      const res = await fetch("/api/law/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversations,
+          orgType,
+          position,
+          today,
+          generatedForms,
+        }),
+      });
+      const json = await res.json();
+      if (json.ok && json.report) {
+        printReport(json.report, today);
+      }
+    } catch { /* noop */ }
+    finally {
+      setReportLoading(false);
+    }
+  }, [messages, generatedForms]);
 
   // 온보딩 칩/버튼 클릭 핸들러 — send 선언 이후에 위치해야 함
   const handleOnboardingStart = useCallback((q?: string) => {
@@ -593,16 +678,21 @@ export default function LegalChatbot() {
         </div>
 
         <div className="border-t border-white/5 px-4 py-4 md:px-5">
-          {/* ── 전체 대화 PDF 저장 ── */}
-          {messages.filter((m) => m.id !== "m0").length > 0 && (
+          {/* ── 전체 상담 리포트 PDF (상담 2건 이상 시 활성화) ── */}
+          {messages.filter((m) => m.role === "ai" && !!m.analysis).length >= 2 && (
             <div className="mb-3 flex justify-end">
               <button
                 type="button"
-                onClick={() => printAllConversations(messages)}
-                className="flex items-center gap-1.5 rounded-lg border border-violet-400/35 bg-violet-500/10 px-3 py-1.5 text-[11.5px] font-black text-violet-200 transition-all hover:border-violet-400/65 hover:bg-violet-500/20"
+                onClick={handleReport}
+                disabled={reportLoading}
+                className="flex items-center gap-1.5 rounded-lg border border-violet-400/35 bg-violet-500/10 px-3 py-1.5 text-[11.5px] font-black text-violet-200 transition-all hover:border-violet-400/65 hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-55"
               >
-                <FileDown className="h-3.5 w-3.5" />
-                전체 대화 PDF 저장
+                {reportLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ClipboardList className="h-3.5 w-3.5" />
+                )}
+                {reportLoading ? "리포트 생성 중…" : "전체 상담 리포트 PDF"}
               </button>
             </div>
           )}
@@ -920,208 +1010,115 @@ function EngineBadge({ engine }: { engine: Analysis["engine"] }) {
   );
 }
 
-/** 분석 결과를 새 창에서 PDF로 인쇄 */
-function printLegalAnalysis(analysis: Analysis, question: string) {
-  const riskColor =
-    analysis.riskLevel === "CRITICAL" ? "#f472b6"
-    : analysis.riskLevel === "HIGH" ? "#a78bfa"
-    : analysis.riskLevel === "MEDIUM" ? "#818cf8"
-    : "#38bdf8";
+/**
+ * Gemini가 생성한 상담 리포트 텍스트를
+ * A4 스타일 HTML 창으로 열고 인쇄 다이얼로그를 띄운다.
+ */
+function printReport(report: string, today: string) {
+  // XSS 방지 이스케이프
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  const citationRows = (analysis.citations ?? [])
-    .map((c) => `<tr><td>${c.statute}</td><td>${c.clause}</td><td>${c.excerpt ?? ""}</td></tr>`)
-    .join("");
-
-  const recItems = (analysis.recommendations ?? [])
-    .map((r) => `<li>${r}</li>`).join("");
-
-  const issueItems = (analysis.keyIssues ?? [])
-    .map((k) => `<li>${k}</li>`).join("");
-
-  const relatedItems = (analysis.relatedLaws ?? [])
-    .map((l) => `<li><b>${l.name}</b>${l.abbr ? ` (${l.abbr})` : ""}${l.department ? ` — ${l.department}` : ""}</li>`)
-    .join("");
-
-  const html = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>LexGuard AI 법률 분석 리포트</title>
-<style>
-  @page { size: A4; margin: 18mm 16mm 18mm 32mm; }
-  * { box-sizing: border-box; }
-  body { font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', Arial, sans-serif; font-size: 13px; color: #1a1a2e; line-height: 1.75; margin: 0; padding: 0; }
-  header { border-bottom: 3px solid #3366cc; padding-bottom: 12px; margin-bottom: 20px; }
-  header h1 { font-size: 22px; color: #0d1f3d; margin: 0 0 4px; }
-  header .meta { font-size: 11px; color: #666; }
-  .risk-badge { display: inline-block; padding: 5px 14px; border-radius: 20px; font-size: 13px; font-weight: 700; margin-left: 8px; }
-  .section { margin: 14px 0; }
-  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #3366cc; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #dde8ff; }
-  .section-body { font-size: 13px; color: #1a1a2e; white-space: pre-wrap; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
-  th { background: #e8f0ff; color: #1a3a6e; padding: 6px 8px; text-align: left; font-size: 11px; }
-  td { padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
-  ul, ol { margin: 4px 0; padding-left: 20px; }
-  li { margin-bottom: 4px; }
-  .disclaimer { font-size: 10px; color: #999; border-top: 1px solid #ddd; margin-top: 24px; padding-top: 8px; font-style: italic; }
-  .page-break { page-break-before: always; }
-</style>
-</head>
-<body>
-<header>
-  <h1>⚖ LexGuard AI 법률 분석 리포트</h1>
-  <div class="meta">
-    분석 일시: ${new Date().toLocaleString("ko-KR")} &nbsp;|&nbsp;
-    엔진: 국가법령정보 API × Gemini LLM &nbsp;|&nbsp;
-    신뢰도: ${analysis.confidence ?? "-"}
-    <span class="risk-badge" style="background:${riskColor}22;color:${riskColor};border:1px solid ${riskColor}55">
-      ${analysis.riskLevel ?? "?"} &nbsp; ${analysis.riskScore ?? 0}%
-    </span>
-  </div>
-</header>
-
-<div class="section">
-  <div class="section-title">📋 질문 / 상황</div>
-  <div class="section-body">${question}</div>
-</div>
-
-${analysis.summary ? `<div class="section">
-  <div class="section-title">📌 요약</div>
-  <div class="section-body">${analysis.summary}</div>
-</div>` : ""}
-
-<div class="section">
-  <div class="section-title">📄 상세 분석</div>
-  <div class="section-body">${analysis.narrative ?? ""}</div>
-</div>
-
-${issueItems ? `<div class="section">
-  <div class="section-title">⚠ 핵심 쟁점</div>
-  <ul>${issueItems}</ul>
-</div>` : ""}
-
-${recItems ? `<div class="section">
-  <div class="section-title">✅ 권고 조치</div>
-  <ul>${recItems}</ul>
-</div>` : ""}
-
-${citationRows ? `<div class="section">
-  <div class="section-title">📚 법령 근거</div>
-  <table>
-    <thead><tr><th>법령명</th><th>조문</th><th>내용</th></tr></thead>
-    <tbody>${citationRows}</tbody>
-  </table>
-</div>` : ""}
-
-${relatedItems ? `<div class="section">
-  <div class="section-title">🔗 관련 법령</div>
-  <ul>${relatedItems}</ul>
-</div>` : ""}
-
-<p class="disclaimer">
-  본 분석은 국가법령정보 API 기반의 AI 자동 분석으로, 법적 효력이 없습니다.
-  구체적인 사안은 반드시 전문 법률가의 조언을 받으시기 바랍니다.
-  LexGuard AI — lexguardai.vercel.app
-</p>
-</body>
-</html>`;
-
-  const w = window.open("", "_blank", "width=900,height=700");
-  if (w) {
-    w.document.write(html);
-    w.document.close();
-    setTimeout(() => w.print(), 600);
-  }
-}
-
-/** 전체 대화를 하나의 PDF로 출력 */
-function printAllConversations(messages: Message[]) {
-  const convo = messages.filter((m) => m.id !== "m0"); // 웰컴 메시지 제외
-
-  const pairs: { question: string; answer: string; riskScore?: number; riskLevel?: string }[] = [];
-  for (let i = 0; i < convo.length; i++) {
-    const m = convo[i];
-    if (m.role === "user") {
-      const next = convo[i + 1];
-      pairs.push({
-        question: m.content,
-        answer: next?.content ?? "",
-        riskScore: next?.analysis?.riskScore,
-        riskLevel: next?.analysis?.riskLevel,
-      });
-      i++; // skip paired ai message
-    }
-  }
-
-  const riskBadge = (score?: number, level?: string) => {
-    if (!score) return "";
-    const color = level === "CRITICAL" ? "#f472b6" : score >= 65 ? "#a78bfa" : score >= 40 ? "#818cf8" : "#38bdf8";
-    return `<span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;background:${color}22;color:${color};border:1px solid ${color}55">${level ?? ""} ${score}%</span>`;
-  };
-
-  const pairsHtml = pairs
-    .map(
-      (p, i) => `
-        <div class="qa-pair">
-          <div class="question">
-            <span class="q-label">Q${i + 1}</span>
-            ${p.question}
-          </div>
-          <div class="answer">
-            <div class="a-header">
-              <span class="a-label">A${i + 1}</span>
-              ${riskBadge(p.riskScore, p.riskLevel)}
-            </div>
-            <div class="a-body">${p.answer.replace(/\n/g, "<br>")}</div>
-          </div>
-        </div>
-        ${i < pairs.length - 1 ? '<hr class="divider">' : ""}
-      `
-    )
+  // 줄별 스타일 매핑
+  const htmlLines = esc(report)
+    .split("\n")
+    .map((raw) => {
+      const line = raw.trim();
+      if (!line) return `<div class="empty"></div>`;
+      if (/^━+$/.test(line)) return `<hr class="sep">`;
+      if (/LexGuard AI 법률 상담 리포트/.test(line))
+        return `<div class="report-title">${line}</div>`;
+      if (/^\[.+\]$/.test(line))
+        return `<div class="section-header">${line.replace(/[\[\]]/g, "")}</div>`;
+      if (/^(상담 일시|기관 유형|직위):/.test(line)) {
+        const [key, ...rest] = line.split(":");
+        return `<div class="meta-line"><span class="meta-key">${key}:</span>${rest.join(":").trim() ? " " + rest.join(":").trim() : " —"}</div>`;
+      }
+      if (/^Q\d+\./.test(line))
+        return `<div class="qa-item">${line}</div>`;
+      if (/^[①②③④⑤⑥⑦⑧⑨⑩]/.test(line))
+        return `<div class="action-item">${line}</div>`;
+      if (/^본 리포트는/.test(line))
+        return `<div class="disclaimer-line">${line}</div>`;
+      return `<div class="body-line">${line}</div>`;
+    })
     .join("");
 
   const html = `<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>LexGuard AI 전체 상담 기록</title>
+<title>LexGuard AI 법률 상담 리포트</title>
 <style>
-  @page { size: A4; margin: 18mm 16mm 18mm 30mm; }
+  @page { size: A4; margin: 18mm 18mm 20mm 25mm; }
   * { box-sizing: border-box; }
-  body { font-family:'Noto Sans KR','Apple SD Gothic Neo',Arial,sans-serif; font-size:13px; color:#1a1a2e; line-height:1.75; margin:0; }
-  header { display:flex; align-items:center; justify-content:space-between; border-bottom:3px solid #3366cc; padding-bottom:12px; margin-bottom:20px; }
-  header h1 { font-size:20px; color:#0d1f3d; margin:0; }
-  header .meta { font-size:11px; color:#888; }
-  .qa-pair { margin-bottom:18px; }
-  .question { background:#f0f6ff; border-left:4px solid #3366cc; padding:10px 14px; border-radius:0 6px 6px 0; margin-bottom:10px; font-size:13px; }
-  .q-label { display:inline-block; font-weight:900; color:#3366cc; margin-right:8px; font-size:12px; }
-  .answer { border:1px solid #dde8ff; border-radius:8px; padding:12px 14px; }
-  .a-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-  .a-label { font-weight:900; color:#6b7280; font-size:11px; }
-  .a-body { font-size:12.5px; color:#1a1a2e; white-space:pre-wrap; line-height:1.7; }
-  .divider { border:none; border-top:1px solid #e5e7eb; margin:18px 0; }
-  .disclaimer { font-size:10px; color:#999; border-top:1px solid #ddd; margin-top:24px; padding-top:8px; font-style:italic; }
+  body {
+    font-family: 'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',Arial,sans-serif;
+    font-size: 12.5px; color: #1a1a2e; line-height: 1.85; margin: 0; padding: 0;
+  }
+  .page-header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    border-bottom: 3px solid #0033aa; padding-bottom: 11px; margin-bottom: 22px;
+  }
+  .page-header .logo { font-size: 20px; font-weight: 900; color: #001a6e; letter-spacing: 0.02em; }
+  .page-header .logo span { font-size: 12px; font-weight: 500; color: #888; margin-left: 8px; }
+  .page-header .print-date { font-size: 11px; color: #999; text-align: right; }
+  .sep { border: none; border-top: 1.5px solid #b8cce8; margin: 8px 0; }
+  .empty { height: 7px; }
+  .report-title {
+    text-align: center; font-size: 15px; font-weight: 900;
+    color: #001a6e; letter-spacing: 0.08em; padding: 4px 0;
+  }
+  .section-header {
+    font-size: 11px; font-weight: 900; letter-spacing: 0.1em;
+    color: #0044bb; background: #e6eeff;
+    border-left: 4px solid #0044bb;
+    padding: 5px 10px; margin: 14px 0 6px;
+    border-radius: 0 4px 4px 0;
+  }
+  .meta-line { font-size: 12px; color: #333; padding: 1px 0; }
+  .meta-key { font-weight: 700; color: #1a1a2e; }
+  .qa-item {
+    padding: 3px 0 3px 14px;
+    border-left: 2px solid #c0d0f0;
+    margin: 3px 0; font-size: 12px; color: #1a1a2e;
+  }
+  .action-item {
+    padding: 3px 6px; font-weight: 700;
+    color: #1a1a2e; font-size: 12.5px; margin: 2px 0;
+  }
+  .body-line { font-size: 12px; color: #1a1a2e; padding: 1px 0; }
+  .disclaimer-line {
+    font-size: 10.5px; color: #888; font-style: italic;
+    text-align: center; padding: 2px 0;
+  }
+  .footer {
+    font-size: 10px; color: #bbb; border-top: 1px solid #ddd;
+    margin-top: 22px; padding-top: 8px; font-style: italic;
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>⚖ LexGuard AI 전체 상담 기록</h1>
-  <div class="meta">출력일: ${new Date().toLocaleString("ko-KR")} &nbsp;|&nbsp; 총 ${pairs.length}건</div>
-</header>
-${pairsHtml}
-<p class="disclaimer">
-  본 상담 기록은 국가법령정보 API 기반의 AI 자동 분석으로, 법적 효력이 없습니다.
+<div class="page-header">
+  <div class="logo">⚖ LexGuard AI<span>법률 상담 리포트</span></div>
+  <div class="print-date">출력일: ${today}</div>
+</div>
+<div class="report-body">
+${htmlLines}
+</div>
+<p class="footer">
+  본 리포트는 국가법령정보 API 기반의 AI 자동 분석으로, 법적 효력이 없습니다.
   구체적인 사안은 반드시 전문 법률가의 조언을 받으시기 바랍니다.
   LexGuard AI — lexguardai.vercel.app
 </p>
 </body>
 </html>`;
 
-  const w = window.open("", "_blank", "width=900,height=700");
+  const w = window.open("", "_blank", "width=900,height=750");
   if (w) {
     w.document.write(html);
     w.document.close();
-    setTimeout(() => w.print(), 600);
+    setTimeout(() => w.print(), 650);
   }
 }
 
