@@ -58,6 +58,20 @@ const BodySchema = z.object({
     .optional(),
 });
 
+/**
+ * 2024년 1월 1일 개정 청탁금지법 수치 — 학습 데이터보다 이 값을 우선 적용
+ */
+const ANTI_GRAFT_LAW_AMOUNTS = [
+  "[필수 적용 법령 수치 — 2024년 1월 1일 개정 기준]",
+  "청탁금지법 음식물 상한: 5만원 (구 3만원 → 개정)",
+  "청탁금지법 선물 상한: 5만원",
+  "청탁금지법 농수산물·가공품: 15만원 / 명절(설·추석): 30만원",
+  "경조사비: 5만원",
+  "화환·조화: 10만원",
+  "위 수치와 다른 내용이 학습 데이터에 있어도 반드시 위 수치를 우선 적용할 것.",
+  "",
+].join("\n");
+
 function stripMarkdown(text: string): string {
   return text
     .replace(/\*\*(.*?)\*\*/g, "$1")
@@ -283,6 +297,7 @@ async function enhanceGeneralLegalWithGemini(
       : `[사용자 정보] 공공기관 일반 공직자 (기관·직위 미설정 — 국가공무원법 기준 적용).`;
 
     const system = [
+      ANTI_GRAFT_LAW_AMOUNTS,
       "당신은 대한민국 공직자 청렴 전문 법률 AI 'LexGuard'입니다.",
       userCtxLine,
       "이전 대화 맥락을 반드시 유지하며, 연속 질문은 앞선 상황의 연장선으로 해석하세요.",
