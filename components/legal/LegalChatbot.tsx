@@ -232,7 +232,11 @@ function buildAnalysisFromHandoff(h: import("@/lib/chatHandoff").ChatHandoff): A
   };
 }
 
-export default function LegalChatbot() {
+export default function LegalChatbot({
+  initialPrompt = "",
+}: {
+  initialPrompt?: string;
+}) {
   /**
    * SSR/Hydration 안전성:
    *   messages 의 초기값은 항상 [WELCOME_MSG] (서버·클라이언트 동일).
@@ -240,7 +244,7 @@ export default function LegalChatbot() {
    *   setTimeout(0) 으로 defer → ESLint set-state-in-effect 규칙 준수.
    */
   const [messages, setMessages] = useState<Message[]>([WELCOME_MSG]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialPrompt);
   const [thinking, setThinking] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [conversationHistory, setConversationHistory] = useState<

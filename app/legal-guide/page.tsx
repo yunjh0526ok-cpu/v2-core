@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { MessageSquare, FileSearch, Scale, Shield, Lightbulb, Gavel } from "lucide-react";
 import LegalChatbot from "@/components/legal/LegalChatbot";
 import DeepDiagnoseForm from "@/components/legal/DeepDiagnoseForm";
@@ -11,8 +12,35 @@ import Breadcrumbs from "@/components/nav/Breadcrumbs";
 
 type Tab = "chat" | "deep" | "judgment";
 
+// ─── searchParams를 읽는 inner component (Suspense 필수) ──────────
+function LegalGuideContent() {
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get("tab") as Tab | null) ?? "chat";
+  const initialPrefill = searchParams.get("prefill") ?? "";
+  return <LegalGuideInner initialTab={initialTab} initialPrefill={initialPrefill} />;
+}
+
 export default function LegalGuidePage() {
-  const [tab, setTab] = useState<Tab>("chat");
+  return (
+    <Suspense
+      fallback={
+        <div className="h-32 animate-pulse rounded-3xl bg-white/5" />
+      }
+    >
+      <LegalGuideContent />
+    </Suspense>
+  );
+}
+
+// ─── 실제 페이지 내용 ─────────────────────────────────────────────
+function LegalGuideInner({
+  initialTab,
+  initialPrefill,
+}: {
+  initialTab: Tab;
+  initialPrefill: string;
+}) {
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   // 탭별로 Breadcrumbs 두 번째 라벨을 다르게 — "Legal-Guide > 부패방어 가이드(Legal Chat)"
   // 또는 "Legal-Guide > 적극행정 가이드(Deep Diagnose)" 로 노출
@@ -137,7 +165,7 @@ export default function LegalGuidePage() {
         }
       >
         {tab === "chat" ? (
-          <LegalChatbot />
+          <LegalChatbot initialPrompt={initialPrefill} />
         ) : tab === "judgment" ? (
           <JudgmentAnalysis />
         ) : (
