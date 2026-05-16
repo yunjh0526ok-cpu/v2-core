@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
 import Breadcrumbs from "@/components/nav/Breadcrumbs";
 import { searchLawsClient } from "@/lib/law-api-client";
 import LegalDefenseChat from "@/components/legal/LegalDefenseChat";
@@ -189,14 +190,8 @@ export default function LegalDefenseDraftPage() {
     setError(null);
     setResult(null);
     try {
-      // 브라우저에서 직접 law.go.kr 검색 → Vercel 서버 IP 우회
-      const [clientPrecedents, clientLaws] = await Promise.allSettled([
-        searchPrecedentsClient(rawText, 5),
-        searchLawsClient(rawText, 5),
-      ]).then(([p, l]) => [
-        p.status === "fulfilled" ? p.value : [],
-        l.status === "fulfilled" ? l.value : [],
-      ]);
+      // 브라우저에서 직접 law.go.kr 법령 검색 → Vercel 서버 IP 우회
+      const clientLaws = await searchLawsClient(rawText, 5).catch(() => []);
 
       const res = await fetch("/api/legal-defense-draft", {
         method: "POST",
@@ -222,14 +217,7 @@ export default function LegalDefenseDraftPage() {
           salaryMonthly: Number(salaryMonthly || 0),
           defenseCost: Number(defenseCost || 0),
           expectedFine: Number(expectedFine || 0),
-          clientPrecedents: (clientPrecedents as Awaited<ReturnType<typeof searchPrecedentsClient>>).map((p) => ({
-            title: p.gist,
-            caseNo: p.caseNo,
-            court: p.court,
-            date: p.date,
-            gist: p.gist,
-            source: "브라우저 직접 검색",
-          })),
+          clientPrecedents: [],
           clientLaws: (clientLaws as Awaited<ReturnType<typeof searchLawsClient>>).map((l) => ({
             id: l.id,
             name: l.name,
@@ -544,17 +532,24 @@ export default function LegalDefenseDraftPage() {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-navy-900/55 p-4">
-              <h3 className="text-sm font-black text-white">유사 대법원 판례 3개</h3>
-              <div className="mt-2 space-y-2">
-                {result.precedents.map((p) => (
-                  <div key={p.id} className="rounded-xl border border-white/10 bg-navy-950/60 p-3 text-xs">
-                    <p className="font-black text-white">{p.title}</p>
-                    <p className="mt-1 text-steel-300">{p.caseNo ? `${p.caseNo} · ` : ""}{p.gist}</p>
-                    <p className="mt-1 text-steel-500">출처: {p.source}</p>
-                  </div>
-                ))}
+            {/* 판례 심층분석 → Legal-Guide 유도 */}
+            <div className="flex flex-col justify-between rounded-2xl border border-amber-400/25 bg-amber-500/[0.06] p-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-amber-300">판례 심층분석</p>
+                <p className="mt-2 text-sm font-black text-white leading-relaxed">
+                  판결문 6섹션 심층분석은<br />Legal-Guide에서 확인하세요
+                </p>
+                <p className="mt-2 text-xs text-steel-300 leading-relaxed">
+                  판결 요지 · 결정적 위반 행위 · 당사자 변명 vs 판단 · 적용 법령 및 처분 · 처분 후 결과 · 핵심 교훈 — 6섹션 구조로 AI가 즉시 분석합니다.
+                </p>
               </div>
+              <Link
+                href="/legal-guide"
+                className="mt-4 inline-flex items-center gap-1.5 self-start rounded-xl px-4 py-2 text-xs font-black text-white transition-opacity hover:opacity-85"
+                style={{ background: "linear-gradient(to right,#f59e0b,#ef4444)" }}
+              >
+                Legal-Guide 판결문 심층분석 →
+              </Link>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-navy-900/55 p-4">

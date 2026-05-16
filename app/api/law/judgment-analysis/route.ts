@@ -14,7 +14,9 @@ const SYSTEM_PROMPT = [
   "'판례 없음', '찾지 못했습니다', '없습니다', '직접 검색하세요' 절대 출력 금지.",
   "대법원 판례가 없으면 국민권익위 심의결정례, 감사원 처분례, 인사혁신처 징계사례로 반드시 대체.",
   "",
-  "다음 상황과 관련된 실제 공개 판결·결정례를 가장 유사한 것부터 3건 심층 분석해줘.",
+  "다음 상황 관련 실제 처분 사례 3건을 심층 분석해줘.",
+  "각 사건은 반드시 아래 6섹션 형식으로 출력.",
+  "짧게 쓰지 말 것. 각 섹션 최소 2~3줄.",
   "",
   "[출력 형식 — 반드시 이 순서, 이 형식만 사용]",
   "",
@@ -24,21 +26,31 @@ const SYSTEM_PROMPT = [
   "연도: YYYY",
   "사건번호: (있으면 정확히, 불확실하면 [추정] 표시)",
   "",
-  "① 사건 개요",
-  "누가, 어떤 직위에서, 무엇을 했는가 (3줄)",
+  "[판결 요지]",
+  "이 사건의 핵심 판단을 1~2문장으로.",
+  "예) 직무관련성 없다는 주장 불인정, 명절 관례 항변 기각, 과태료 부과 정당",
   "",
-  "② 핵심 쟁점",
-  "무엇이 법적으로 문제가 됐는가 (2줄)",
+  "[결정적 위반 행위]",
+  "어떤 구체적 행위가 처벌 원인이 됐는지.",
+  "금액·횟수·관계·경위 포함해서 상세히.",
   "",
-  "③ 판단 근거",
-  "왜 위반으로 판정됐는가, 어떤 조문 적용 (2줄)",
+  "[당사자 변명 vs 법원·위원회 판단]",
+  "당사자가 뭐라고 항변했는지 먼저 쓰고,",
+  "왜 그 변명이 받아들여지지 않았는지 설명.",
+  "변명: ...",
+  "판단: ...",
   "",
-  "④ 최종 처분",
-  "형사: 징역 O년 / 벌금 OOO만원 (없으면 '해당 없음')",
-  "행정: 과태료 OOO만원 / 징계 수위 (없으면 '해당 없음')",
+  "[적용 법령 및 처분]",
+  "법령명 §조항: 내용 1줄",
+  "형사: O년 이하 징역 / O만원 이하 벌금 (없으면 '없음')",
+  "행정: 과태료 O만원 (없으면 '없음')",
+  "징계: 수위 (없으면 '없음')",
   "",
-  "⑤ 내 상황 시사점",
-  "이 판결이 질문자 상황에 주는 교훈 1줄",
+  "[처분 후 결과]",
+  "징계 후 직위·직책 변화, 계약 취소 여부 등",
+  "",
+  "[내 상황 핵심 교훈]",
+  "질문자가 반드시 기억해야 할 것 1~2문장",
   "",
   "[사건2]",
   "제목: ...",
@@ -46,20 +58,26 @@ const SYSTEM_PROMPT = [
   "연도: ...",
   "사건번호: ...",
   "",
-  "① 사건 개요",
+  "[판결 요지]",
   "...",
   "",
-  "② 핵심 쟁점",
+  "[결정적 위반 행위]",
   "...",
   "",
-  "③ 판단 근거",
-  "...",
+  "[당사자 변명 vs 법원·위원회 판단]",
+  "변명: ...",
+  "판단: ...",
   "",
-  "④ 최종 처분",
+  "[적용 법령 및 처분]",
+  "법령명 §조항: ...",
   "형사: ...",
   "행정: ...",
+  "징계: ...",
   "",
-  "⑤ 내 상황 시사점",
+  "[처분 후 결과]",
+  "...",
+  "",
+  "[내 상황 핵심 교훈]",
   "...",
   "",
   "[사건3]",
@@ -68,21 +86,31 @@ const SYSTEM_PROMPT = [
   "연도: ...",
   "사건번호: ...",
   "",
-  "① 사건 개요",
+  "[판결 요지]",
   "...",
   "",
-  "② 핵심 쟁점",
+  "[결정적 위반 행위]",
   "...",
   "",
-  "③ 판단 근거",
-  "...",
+  "[당사자 변명 vs 법원·위원회 판단]",
+  "변명: ...",
+  "판단: ...",
   "",
-  "④ 최종 처분",
+  "[적용 법령 및 처분]",
+  "법령명 §조항: ...",
   "형사: ...",
   "행정: ...",
+  "징계: ...",
   "",
-  "⑤ 내 상황 시사점",
+  "[처분 후 결과]",
   "...",
+  "",
+  "[내 상황 핵심 교훈]",
+  "...",
+  "",
+  "출처: 대법원/권익위/감사원/인사혁신처",
+  "연도: 2021~2024 최신 우선",
+  "없으면 유사 기관 사례로 대체, 절대 생략 금지",
 ].join("\n");
 
 export type JudgmentCase = {
@@ -90,12 +118,18 @@ export type JudgmentCase = {
   source: "대법원" | "국민권익위" | "감사원" | "인사혁신처";
   year: string;
   caseNo: string;
-  overview: string;
-  issue: string;
-  reasoning: string;
-  criminalDisposition: string;
-  adminDisposition: string;
-  implication: string;
+  /** [판결 요지] */
+  verdict: string;
+  /** [결정적 위반 행위] */
+  violation: string;
+  /** [당사자 변명 vs 법원·위원회 판단] */
+  defense: string;
+  /** [적용 법령 및 처분] — 법령·형사·행정·징계 포함 전체 텍스트 */
+  disposition: string;
+  /** [처분 후 결과] */
+  afterResult: string;
+  /** [내 상황 핵심 교훈] */
+  lesson: string;
 };
 
 function parseJudgmentCases(text: string): JudgmentCase[] {
@@ -117,14 +151,16 @@ function parseJudgmentCases(text: string): JudgmentCase[] {
       return block.match(re)?.[1]?.trim() ?? "";
     };
 
-    const getSection = (marker: string, nextMarker?: string) => {
-      const s = block.indexOf(marker);
+    /** 섹션 헤더 [TAG] 부터 다음 [nextTag] 직전까지 추출 */
+    const getSectionContent = (tag: string, nextTag?: string) => {
+      const s = block.indexOf(tag);
       if (s === -1) return "";
-      const e = nextMarker ? block.indexOf(nextMarker) : -1;
+      const afterTag = s + tag.length;
+      const e = nextTag ? block.indexOf(nextTag, afterTag) : -1;
       return block
-        .slice(s + marker.length, e !== -1 ? e : undefined)
+        .slice(afterTag, e !== -1 ? e : undefined)
         .trim()
-        .replace(/\n+/g, " ");
+        .replace(/\n{3,}/g, "\n\n");
     };
 
     const rawSource = getLine("출처");
@@ -137,25 +173,21 @@ function parseJudgmentCases(text: string): JudgmentCase[] {
         ? "인사혁신처"
         : "대법원";
 
-    // 최종 처분: 형사/행정 각각 추출
-    const criminalMatch = block.match(/형사[:：]\s*(.+)/);
-    const adminMatch = block.match(/행정[:：]\s*(.+)/);
-
     results.push({
       title: getLine("제목"),
       source,
       year: getLine("연도"),
       caseNo: getLine("사건번호"),
-      overview: getSection("① 사건 개요", "② 핵심 쟁점"),
-      issue: getSection("② 핵심 쟁점", "③ 판단 근거"),
-      reasoning: getSection("③ 판단 근거", "④ 최종 처분"),
-      criminalDisposition: criminalMatch?.[1]?.trim() ?? "",
-      adminDisposition: adminMatch?.[1]?.trim() ?? "",
-      implication: getSection("⑤ 내 상황 시사점"),
+      verdict: getSectionContent("[판결 요지]", "[결정적 위반 행위]"),
+      violation: getSectionContent("[결정적 위반 행위]", "[당사자 변명"),
+      defense: getSectionContent("[당사자 변명 vs 법원·위원회 판단]", "[적용 법령"),
+      disposition: getSectionContent("[적용 법령 및 처분]", "[처분 후 결과]"),
+      afterResult: getSectionContent("[처분 후 결과]", "[내 상황 핵심 교훈]"),
+      lesson: getSectionContent("[내 상황 핵심 교훈]"),
     });
   }
 
-  return results.filter((c) => c.title || c.overview);
+  return results.filter((c) => c.title || c.verdict);
 }
 
 export async function POST(req: Request) {
@@ -178,7 +210,7 @@ export async function POST(req: Request) {
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: `상황: ${prompt.slice(0, 400)}` }],
       temperature: 0.2,
-      maxOutputTokens: 2000,
+      maxOutputTokens: 2800,
     });
 
     if (!txt) {

@@ -125,98 +125,7 @@ function SectionRow({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Disposition Row (형사/행정)
-// ─────────────────────────────────────────────────────────────────
-
-function DispositionRow({
-  criminal,
-  admin,
-}: {
-  criminal: string;
-  admin: string;
-}) {
-  const hasCriminal = criminal && criminal !== "해당 없음";
-  const hasAdmin = admin && admin !== "해당 없음";
-  if (!hasCriminal && !hasAdmin) return null;
-
-  return (
-    <div
-      style={{
-        padding: "8px 0",
-        borderBottom: "1px solid rgba(255,255,255,0.05)",
-        display: "flex",
-        gap: "10px",
-      }}
-    >
-      <span
-        style={{
-          flexShrink: 0,
-          width: "20px",
-          height: "20px",
-          borderRadius: "50%",
-          background: "rgba(248,113,113,0.15)",
-          border: "1px solid rgba(248,113,113,0.4)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: "10px",
-          fontWeight: 800,
-          color: "#f87171",
-          marginTop: "2px",
-        }}
-      >
-        ④
-      </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p
-          style={{
-            fontSize: "10px",
-            fontWeight: 800,
-            color: "#2e3f60",
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            margin: "0 0 5px",
-          }}
-        >
-          최종 처분
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-          {hasCriminal && (
-            <span
-              style={{
-                padding: "3px 10px",
-                borderRadius: "99px",
-                background: "rgba(248,113,113,0.12)",
-                border: "1px solid rgba(248,113,113,0.3)",
-                fontSize: "12px",
-                fontWeight: 700,
-                color: "#f87171",
-              }}
-            >
-              형사 {criminal}
-            </span>
-          )}
-          {hasAdmin && (
-            <span
-              style={{
-                padding: "3px 10px",
-                borderRadius: "99px",
-                background: "rgba(251,146,60,0.12)",
-                border: "1px solid rgba(251,146,60,0.3)",
-                fontSize: "12px",
-                fontWeight: 700,
-                color: "#fb923c",
-              }}
-            >
-              행정 {admin}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+// (DispositionRow removed — disposition now rendered as SectionRow with full text)
 
 // ─────────────────────────────────────────────────────────────────
 // JudgmentCard (아코디언)
@@ -319,22 +228,20 @@ function JudgmentCard({
                 · {item.caseNo}
               </span>
             )}
-            {/* Quick disposition preview */}
-            {(item.criminalDisposition || item.adminDisposition) && (
+            {item.verdict && (
               <span
                 style={{
                   marginLeft: "auto",
                   fontSize: "11px",
                   fontWeight: 800,
-                  color: "#f87171",
+                  color: "#fbbf24",
                   whiteSpace: "nowrap",
+                  maxWidth: "200px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
               >
-                {item.criminalDisposition && item.criminalDisposition !== "해당 없음"
-                  ? `형사 ${item.criminalDisposition.slice(0, 20)}`
-                  : item.adminDisposition && item.adminDisposition !== "해당 없음"
-                  ? `행정 ${item.adminDisposition.slice(0, 20)}`
-                  : ""}
+                {item.verdict.slice(0, 30)}{item.verdict.length > 30 ? "…" : ""}
               </span>
             )}
           </div>
@@ -361,27 +268,35 @@ function JudgmentCard({
         >
           <SectionRow
             marker="①"
-            label="사건 개요"
-            content={item.overview}
-            accent={accent}
+            label="판결 요지"
+            content={item.verdict}
+            accent="#fbbf24"
           />
           <SectionRow
             marker="②"
-            label="핵심 쟁점"
-            content={item.issue}
-            accent={accent}
+            label="결정적 위반 행위"
+            content={item.violation}
+            accent="#f87171"
           />
           <SectionRow
             marker="③"
-            label="판단 근거"
-            content={item.reasoning}
-            accent={accent}
+            label="당사자 변명 vs 법원·위원회 판단"
+            content={item.defense}
+            accent="#a78bfa"
           />
-          <DispositionRow
-            criminal={item.criminalDisposition}
-            admin={item.adminDisposition}
+          <SectionRow
+            marker="④"
+            label="적용 법령 및 처분"
+            content={item.disposition}
+            accent="#60a5fa"
           />
-          {item.implication && (
+          <SectionRow
+            marker="⑤"
+            label="처분 후 결과"
+            content={item.afterResult}
+            accent="#fb923c"
+          />
+          {item.lesson && (
             <div
               style={{
                 marginTop: "10px",
@@ -401,7 +316,7 @@ function JudgmentCard({
                   margin: "0 0 4px",
                 }}
               >
-                ⑤ 내 상황 시사점
+                ⑥ 내 상황 핵심 교훈
               </p>
               <p
                 style={{
@@ -412,7 +327,7 @@ function JudgmentCard({
                   margin: 0,
                 }}
               >
-                {item.implication}
+                {item.lesson}
               </p>
             </div>
           )}
@@ -451,6 +366,21 @@ function JudgmentCard({
 // ─────────────────────────────────────────────────────────────────
 
 function printJudgmentCase(item: JudgmentCase) {
+  const esc = (s: string) =>
+    (s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+
+  const sec = (num: string, label: string, content: string, color = "#3366cc") =>
+    content
+      ? `<div class="section">
+          <div class="section-title" style="color:${color};border-color:${color}33">${num} ${label}</div>
+          <div class="section-body">${esc(content)}</div>
+        </div>`
+      : "";
+
   const html = `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -459,18 +389,15 @@ function printJudgmentCase(item: JudgmentCase) {
 <style>
   @page { size: A4; margin: 18mm 16mm 18mm 30mm; }
   * { box-sizing: border-box; }
-  body { font-family: 'Noto Sans KR','Apple SD Gothic Neo',Arial,sans-serif; font-size:13px; color:#1a1a2e; line-height:1.75; margin:0; }
+  body { font-family: 'Noto Sans KR','Apple SD Gothic Neo',Arial,sans-serif; font-size:13px; color:#1a1a2e; line-height:1.85; margin:0; }
   header { border-bottom:3px solid #3366cc; padding-bottom:12px; margin-bottom:18px; }
   header h1 { font-size:20px; color:#0d1f3d; margin:0 0 4px; }
   .meta { font-size:11px; color:#666; }
   .badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; background:#e8f0ff; color:#3366cc; margin-left:6px; }
-  .section { margin:12px 0; }
-  .section-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#3366cc; margin-bottom:4px; padding-bottom:3px; border-bottom:1px solid #dde8ff; }
-  .section-body { font-size:13px; color:#1a1a2e; white-space:pre-wrap; }
-  .disp { display:inline-block; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:700; margin-right:6px; }
-  .criminal { background:#fee2e2; color:#b91c1c; }
-  .admin { background:#ffedd5; color:#c2410c; }
-  .implication { background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-top:12px; font-size:13px; }
+  .section { margin:14px 0; }
+  .section-title { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.12em; margin-bottom:5px; padding-bottom:4px; border-bottom:1px solid #dde8ff; }
+  .section-body { font-size:13px; color:#1a1a2e; white-space:pre-wrap; line-height:1.85; }
+  .lesson { background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-top:14px; font-size:13px; line-height:1.75; }
   .disclaimer { font-size:10px; color:#999; border-top:1px solid #ddd; margin-top:20px; padding-top:8px; font-style:italic; }
 </style>
 </head>
@@ -481,30 +408,28 @@ function printJudgmentCase(item: JudgmentCase) {
     분석 일시: ${new Date().toLocaleString("ko-KR")}
     <span class="badge">${item.source}</span>
     ${item.year ? `<span class="badge">${item.year}</span>` : ""}
+    ${item.caseNo ? `<span class="badge">${item.caseNo}</span>` : ""}
   </div>
 </header>
 
 <div class="section">
-  <div class="section-title">사건명</div>
-  <div class="section-body">${item.title}</div>
+  <div class="section-title" style="color:#1a1a2e;border-color:#ccc">사건명</div>
+  <div class="section-body" style="font-size:15px;font-weight:800">${esc(item.title)}</div>
 </div>
-${item.caseNo ? `<div class="section"><div class="section-title">사건번호</div><div class="section-body">${item.caseNo}</div></div>` : ""}
-${item.overview ? `<div class="section"><div class="section-title">① 사건 개요</div><div class="section-body">${item.overview}</div></div>` : ""}
-${item.issue ? `<div class="section"><div class="section-title">② 핵심 쟁점</div><div class="section-body">${item.issue}</div></div>` : ""}
-${item.reasoning ? `<div class="section"><div class="section-title">③ 판단 근거</div><div class="section-body">${item.reasoning}</div></div>` : ""}
-<div class="section">
-  <div class="section-title">④ 최종 처분</div>
-  <div>
-    ${item.criminalDisposition && item.criminalDisposition !== "해당 없음" ? `<span class="disp criminal">형사 ${item.criminalDisposition}</span>` : ""}
-    ${item.adminDisposition && item.adminDisposition !== "해당 없음" ? `<span class="disp admin">행정 ${item.adminDisposition}</span>` : ""}
-  </div>
-</div>
-${item.implication ? `<div class="implication"><b>⑤ 내 상황 시사점:</b> ${item.implication}</div>` : ""}
-<p class="disclaimer">본 분석은 국가법령정보 API 기반의 AI 자동 분석으로, 법적 효력이 없습니다. LexGuard AI — lexguardai.vercel.app</p>
+
+${sec("①", "판결 요지", item.verdict, "#b45309")}
+${sec("②", "결정적 위반 행위", item.violation, "#b91c1c")}
+${sec("③", "당사자 변명 vs 법원·위원회 판단", item.defense, "#7c3aed")}
+${sec("④", "적용 법령 및 처분", item.disposition, "#1d4ed8")}
+${sec("⑤", "처분 후 결과", item.afterResult, "#c2410c")}
+
+${item.lesson ? `<div class="lesson"><b style="color:#1d4ed8">⑥ 내 상황 핵심 교훈:</b> ${esc(item.lesson)}</div>` : ""}
+
+<p class="disclaimer">본 분석은 AI 자동 분석으로 법적 효력이 없습니다. LexGuard AI — lexguardai.vercel.app</p>
 </body>
 </html>`;
 
-  const w = window.open("", "_blank", "width=900,height=700");
+  const w = window.open("", "_blank", "width=900,height=750");
   if (w) {
     w.document.write(html);
     w.document.close();
