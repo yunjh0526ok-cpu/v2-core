@@ -1,27 +1,20 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Breadcrumbs from "@/components/nav/Breadcrumbs";
-import { searchPrecedentsClient, searchLawsClient } from "@/lib/law-api-client";
+import { searchLawsClient } from "@/lib/law-api-client";
 import LegalDefenseChat from "@/components/legal/LegalDefenseChat";
 import {
   BadgeAlert,
   Calculator,
   FileCheck2,
   FilePenLine,
-  FileSearch,
   Gavel,
   Lightbulb,
   Scale,
   Send,
   Sparkles,
 } from "lucide-react";
-
-type PrecedentItem = {
-  caseNo: string; court: string; date: string; gist: string;
-  outcome: string; similarity: "높음" | "중간" | "낮음"; relevantPoint: string;
-};
-type PrecedentResponse = { items: PrecedentItem[]; advice: string; totalFound: number; noResults?: boolean };
 
 type DocTab =
   | "부패신고서"
@@ -30,7 +23,6 @@ type DocTab =
   | "답변서"
   | "소명서 작성"
   | "면책 신청 가이드"
-  | "유사 사례 분석"
   | "리스크 계산기";
 
 type Purpose = "소명" | "답변" | "변론";
@@ -105,12 +97,6 @@ const TAB_CONFIG: Record<
       "예: 주민 안전 확보를 위한 적극행정 과정에서 재량 판단을 했고 사적 이익은 없었습니다. 사전 검토 문서와 보고 체계도 갖췄습니다.",
     required: ["공익성", "사익 부재", "절차 준수", "면책 요청사항"],
   },
-  "유사 사례 분석": {
-    headline: "우리 사건 요약 + 비교하고 싶은 쟁점 입력",
-    placeholder:
-      "예: 금품수수 의심 사안이지만 반환 조치와 즉시 신고가 있었습니다. 유사 판례에서 처분수위가 어떻게 달라지는지 비교 분석이 필요합니다.",
-    required: ["사건요약", "핵심쟁점", "비교 포인트", "원하는 결론"],
-  },
   "리스크 계산기": {
     headline: "사건 개요 + 비용/손실 판단에 필요한 변수 입력",
     placeholder:
@@ -126,7 +112,6 @@ const TAB_META: Array<{ tab: DocTab; icon: ReactNode; desc: string }> = [
   { tab: "답변서", icon: <FileCheck2 className="h-4 w-4" />, desc: "감사·징계 질의에 대한 공식 의견서" },
   { tab: "소명서 작성", icon: <FilePenLine className="h-4 w-4" />, desc: "정상참작 중심 초기 대응 문건" },
   { tab: "면책 신청 가이드", icon: <Lightbulb className="h-4 w-4" />, desc: "적극행정 면책요건 중심 공세적 방어" },
-  { tab: "유사 사례 분석", icon: <FileSearch className="h-4 w-4" />, desc: "대법원 판례 3건 + 유권해석 매칭" },
   { tab: "리스크 계산기", icon: <Calculator className="h-4 w-4" />, desc: "변호사비·감봉·예상 벌금 손실 추산" },
 ];
 
@@ -148,13 +133,6 @@ export default function LegalDefenseDraftPage() {
   const [composeMode, setComposeMode] = useState<"ai" | "manual">("ai");
   const [selectedTab, setSelectedTab] = useState<DocTab>("소명서 작성");
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("tab") === "precedent") {
-      setComposeMode("manual");
-      setSelectedTab("유사 사례 분석");
-    }
-  }, []);
   const [orgType, setOrgType] = useState<"central" | "local" | "public">("public");
   const [rawText, setRawText] = useState("");
   const [agency, setAgency] = useState("");
@@ -177,12 +155,6 @@ export default function LegalDefenseDraftPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ApiData | null>(null);
   const [phase, setPhase] = useState<"idle" | "running" | "done">("idle");
-
-  // 유사 사례 분석 전용 상태
-  const [precedentQuery, setPrecedentQuery] = useState("");
-  const [precedentLoading, setPrecedentLoading] = useState(false);
-  const [precedentError, setPrecedentError] = useState<string | null>(null);
-  const [precedentResult, setPrecedentResult] = useState<PrecedentResponse | null>(null);
 
   const mergedPreview = useMemo(() => {
     const parts = [
@@ -305,36 +277,6 @@ export default function LegalDefenseDraftPage() {
     URL.revokeObjectURL(url);
   };
 
-  const submitPrecedent = async () => {
-    if (precedentQuery.trim().length < 5) {
-      setPrecedentError("상황을 5자 이상 입력해 주세요.");
-      return;
-    }
-    setPrecedentLoading(true);
-    setPrecedentError(null);
-    setPrecedentResult(null);
-    try {
-      const res = await fetch("/api/legal-defense/precedent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ situation: precedentQuery }),
-      });
-      const json = await res.json();
-      if (!json.ok || !json.data) {
-        setPrecedentError(json.error ?? "판례 검색에 실패했습니다.");
-        return;
-      }
-      setPrecedentResult(json.data as PrecedentResponse);
-    } catch (e) {
-      setPrecedentError(e instanceof Error ? e.message : "오류가 발생했습니다.");
-    } finally {
-      setPrecedentLoading(false);
-    }
-  };
-
-  /** 예전 이름 유지 — 브라우저 직접 law.go.kr 호출 제거 후 서버 API와 동일 */
-  const submitPrecedentClient = submitPrecedent;
-
   const tabUi = TAB_CONFIG[selectedTab];
 
   return (
@@ -423,83 +365,6 @@ export default function LegalDefenseDraftPage() {
         </div>
       </section>
 
-      {selectedTab === "유사 사례 분석" ? (
-        <section className="rounded-2xl border border-white/10 bg-navy-900/55 p-4 space-y-4">
-          <div>
-            <h2 className="text-lg font-black text-white">유사 사례 분석</h2>
-            <p className="mt-1 text-xs text-steel-300">
-              상황을 한 번 입력하면 관련 판례 3건을 즉시 분석합니다. AI가 질문하지 않고 바로 결과를 보여줍니다.
-            </p>
-          </div>
-          <textarea
-            value={precedentQuery}
-            onChange={(e) => setPrecedentQuery(e.target.value)}
-            className="h-36 w-full rounded-xl border border-white/10 bg-navy-950/70 p-3 text-sm text-white outline-none focus:border-sky-300/50"
-            placeholder={TAB_CONFIG["유사 사례 분석"].placeholder}
-          />
-          <button
-            type="button"
-            onClick={submitPrecedent}
-            disabled={precedentLoading}
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 via-indigo-500 to-violet-500 px-4 py-2.5 text-sm font-black text-white disabled:opacity-60"
-          >
-            <FileSearch className="h-4 w-4" />
-            {precedentLoading ? "판례 분석 중..." : "판례 즉시 검색"}
-          </button>
-          {precedentError && (
-            <p className="rounded-lg border border-rose-400/35 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-200">
-              {precedentError}
-            </p>
-          )}
-          {precedentResult && precedentResult.noResults && (
-            <div className="rounded-xl border border-amber-300/35 bg-amber-500/10 p-4 space-y-2">
-              <p className="text-sm font-black text-amber-200">관련 판례를 찾지 못했습니다.</p>
-              <p className="text-xs text-amber-100/80">
-                국가법령정보 API에서 검색 결과가 없습니다.{" "}
-                <a
-                  href="https://glaw.scourt.go.kr"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline text-sky-300 hover:text-sky-200"
-                >
-                  glaw.scourt.go.kr
-                </a>
-                {" "}에서 직접 검색하세요.
-              </p>
-            </div>
-          )}
-          {precedentResult && !precedentResult.noResults && (
-            <div className="space-y-3">
-              {precedentResult.items.map((item, i) => (
-                <div key={i} className="rounded-xl border border-white/10 bg-navy-950/60 p-4 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-black border ${item.outcome === "승소" ? "bg-emerald-500/20 text-emerald-200 border-emerald-300/40" : item.outcome === "패소" ? "bg-rose-500/20 text-rose-200 border-rose-300/40" : "bg-white/10 text-steel-200 border-white/10"}`}>
-                      {item.outcome}
-                    </span>
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-black border ${item.similarity === "높음" ? "bg-sky-500/20 text-sky-200 border-sky-300/40" : item.similarity === "중간" ? "bg-violet-500/20 text-violet-200 border-violet-300/40" : "bg-white/10 text-steel-300 border-white/10"}`}>
-                      유사도 {item.similarity}
-                    </span>
-                    <span className="text-xs text-steel-400">
-                      {item.caseNo} | {item.court}{item.date ? ` | ${item.date}` : ""}
-                    </span>
-                  </div>
-                  <p className="text-sm text-steel-100">{item.gist}</p>
-                  <p className="text-xs text-sky-300">연결 포인트: {item.relevantPoint}</p>
-                </div>
-              ))}
-              {precedentResult.advice && (
-                <div className="rounded-xl border border-violet-300/30 bg-violet-500/10 p-4">
-                  <p className="text-xs font-black text-violet-200">종합 조언</p>
-                  <p className="mt-1 text-sm text-steel-100">{precedentResult.advice}</p>
-                </div>
-              )}
-              <p className="text-xs text-steel-500">
-                검색된 판례 {precedentResult.totalFound}건 중 상위 3건 표시
-              </p>
-            </div>
-          )}
-        </section>
-      ) : (
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-2xl border border-white/10 bg-navy-900/55 p-4">
           <h2 className="text-lg font-black text-white">사건 입력</h2>
@@ -661,9 +526,8 @@ export default function LegalDefenseDraftPage() {
           </div>
         </div>
       </section>
-      )}
 
-      {selectedTab !== "유사 사례 분석" && result && (
+      {result && (
         <section className="space-y-4">
           <div className="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4">
             <p className="text-xs font-black text-violet-200">1단계 · 사건 분석 결과</p>
@@ -779,19 +643,3 @@ function InfoCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-// 클라이언트 판례 검색용 키워드 추출 (lib/law-api.ts의 서버 전용 버전과 동일 로직)
-function extractQueryKeywords(text: string): string {
-  const cleaned = text.replace(/\s+/g, " ").trim().slice(0, 200);
-  const filler =
-    /^(저는|저희|제가|혹시|질문입니다|문의드|여쭤|알고\s*싶|궁금합니다|도와)/i;
-  const q = cleaned.replace(filler, "").trim() || cleaned;
-  const stop = new Set([
-    "하는데", "있는데", "경우에", "있을까", "있나요",
-    "되나요", "될까요", "인가요", "맞나요",
-  ]);
-  const tokens = q
-    .split(/[\s,.;，。!?？]+/)
-    .filter((w) => w.length >= 2 && !stop.has(w))
-    .slice(0, 8);
-  return (tokens.join(" ") || q).slice(0, 120);
-}
