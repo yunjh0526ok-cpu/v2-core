@@ -1345,8 +1345,10 @@ function MessageBubble({
                 <p className="text-[11px] font-semibold leading-snug text-amber-200/80">
                   이 리스크, 우리 기관 전체가 모르고 있을 수 있습니다.
                 </p>
-                <Link
-                  href={`/apply?issue=${encodeURIComponent(detectCtaIssue(msg.analysis!))}`}
+                <a
+                  href="https://integrity.softr.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-black whitespace-nowrap transition-all hover:opacity-85"
                   style={{
                     border: "1px solid rgba(0,200,200,0.35)",
@@ -1355,7 +1357,7 @@ function MessageBubble({
                   }}
                 >
                   기관 교육 알아보기
-                </Link>
+                </a>
               </div>
             )}
 

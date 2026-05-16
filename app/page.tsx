@@ -77,6 +77,7 @@ export default function Dashboard() {
               지금 시작하기
               <ArrowUpRight className="h-4 w-4" />
             </Link>
+            {/* CTA: /legal-guide */}
           </div>
           <InstallCycleSetting />
         </div>
@@ -128,14 +129,24 @@ export default function Dashboard() {
         <p className="mt-2 text-[15px] text-steel-200">
           신청 폼에 고민만 입력하면 AI가 제안서를 자동 생성합니다.
         </p>
-        <Link
-          href="/apply"
-          className="mt-5 inline-flex items-center gap-2 rounded-xl border border-sky-300/40 bg-sky-500/10 px-5 py-3 text-sm font-black text-sky-200 hover:bg-sky-500/20"
-        >
-          <ClipboardCheck className="h-4 w-4" />
-          신청하러 가기
-          <ArrowUpRight className="h-4 w-4" />
-        </Link>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="https://integrity.softr.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl border border-sky-300/40 bg-sky-500/10 px-5 py-3 text-sm font-black text-sky-200 hover:bg-sky-500/20"
+          >
+            <ClipboardCheck className="h-4 w-4" />
+            강의 신청하기
+            <ArrowUpRight className="h-4 w-4" />
+          </Link>
+          <a
+            href="mailto:yszoo1467@naver.com"
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-white/60 hover:bg-white/10"
+          >
+            yszoo1467@naver.com
+          </a>
+        </div>
       </section>
     </div>
   );
