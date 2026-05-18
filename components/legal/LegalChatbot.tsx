@@ -255,6 +255,7 @@ export default function LegalChatbot({
   const [interviewMode, setInterviewMode] = useState(false);
   const [interviewPhase, setInterviewPhase] = useState<"idle" | "questioning">("idle");
   const [pendingInterviewPrompt, setPendingInterviewPrompt] = useState("");
+  const [interviewContext, setInterviewContext] = useState("");
 
   // ── 서식 자동 생성 ──
   const [formModal, setFormModal] = useState<{ formName: string; draft: string } | null>(null);
@@ -311,7 +312,7 @@ export default function LegalChatbot({
     return parseCitationsFromNarrative(narrative);
   }, [latestAnalysis]);
 
-  const send = useCallback(async (text?: string) => {
+  const send = useCallback(async (text?: string, isFollowUp?: boolean) => {
     const q = (text ?? input).trim();
     if (!q || thinking) return;
 
@@ -335,8 +336,9 @@ export default function LegalChatbot({
       if (raw) userContext = JSON.parse(raw) as { orgType: string; position: string };
     } catch { /* noop */ }
 
-    // ── 인터뷰 모드: 첫 메시지 → 확인 질문 ──
-    if (interviewMode && interviewPhase === "idle") {
+    // ── 인터뷰 모드: 첫 메시지 → 확인 질문 (연결질문 클릭 시 재시작 금지) ──
+    if (interviewMode && interviewPhase === "idle" && !isFollowUp) {
+      setInterviewContext("");
       setPendingInterviewPrompt(q);
       setInterviewPhase("questioning");
       try {
@@ -377,6 +379,12 @@ export default function LegalChatbot({
       analyzePrompt = `원래 상황: ${pendingInterviewPrompt}\n추가 정보: ${q}`;
       setInterviewPhase("idle");
       setPendingInterviewPrompt("");
+      setInterviewContext(analyzePrompt);
+    }
+
+    // ── 연결질문 클릭 시: 기존 인터뷰 맥락 재사용, 인터뷰 재시작 금지 ──
+    if (isFollowUp && interviewContext) {
+      analyzePrompt = `이전 인터뷰에서 수집된 정보: ${interviewContext}\n이 정보를 기반으로 바로 판정할 것. 인터뷰 질문 재시작 금지.\n\n후속 질문: ${q}`;
     }
 
     const doFetch = async (attempt: number): Promise<void> => {
@@ -508,7 +516,7 @@ export default function LegalChatbot({
     } finally {
       setThinking(false);
     }
-  }, [input, thinking, conversationHistory, interviewMode, interviewPhase, pendingInterviewPrompt]);
+  }, [input, thinking, conversationHistory, interviewMode, interviewPhase, pendingInterviewPrompt, interviewContext]);
 
 
   // ── 서식 요청 핸들러 ──
@@ -684,7 +692,7 @@ export default function LegalChatbot({
               <MessageBubble
                 key={m.id}
                 msg={m}
-                onFollowUp={send}
+                onFollowUp={(q) => send(q, true)}
                 onFormRequest={handleFormRequest}
                 formLoading={generatingFormId === m.id}
               />
