@@ -276,21 +276,19 @@ async function enhanceGeneralLegalWithGemini(
       .join("\n");
     const won = precedents.filter((p) => p.outcome === "승소").slice(0, 2);
     const lost = precedents.filter((p) => p.outcome === "패소").slice(0, 2);
+    const allPrec = [...won, ...lost];
     const precedentLines =
-      precedents.length > 0
+      allPrec.length > 0
         ? [
-            "▶ 관련 판례:",
-            ...won.map(
+            "[국가법령정보 API 실제 검색 결과]",
+            ...allPrec.map(
               (p) =>
-                `[승소 사례] ${p.caseNo} | ${p.court} | ${p.date}\n→ 핵심 요지: ${p.gist}\n→ 승소 근거: ${p.outcomeKeyword}`
+                `사건명: ${p.caseNo} | 기관: ${p.court} | 선고일: ${p.date}\n판시사항: ${p.gist}\n판결 결과: ${p.outcomeKeyword}(${p.outcome})`
             ),
-            ...lost.map(
-              (p) =>
-                `[패소 사례] ${p.caseNo} | ${p.court} | ${p.date}\n→ 핵심 요지: ${p.gist}\n→ 패소 원인: ${p.outcomeKeyword}`
-            ),
-            `→ 내 상황과의 유사도: ${precedents.length >= 3 ? "높음" : precedents.length === 2 ? "중간" : "낮음"} + 질문 키워드와 사건 쟁점 매칭 기반`,
+            "",
+            "위 실제 판례·결정례를 기반으로 처분사례를 작성. API 결과에 없는 내용은 절대 지어내지 말 것. API 결과가 부족하면 '관련 판례 검색 중'으로 표시.",
           ].join("\n")
-        : "관련 판례를 찾지 못했습니다. 대법원 종합법률정보(glaw.scourt.go.kr)에서 직접 검색하시기 바랍니다.";
+        : "[국가법령정보 API 검색 결과 없음] 관련 판례 검색 중. 권익위 결정례 유사사건으로 대체 표기.";
 
     const userCtxLine = userContext
       ? `[사용자 정보] ${userContext.orgType} 소속 · ${userContext.position}. 이 맥락에 맞는 법령·처벌 수위·판례를 우선 적용할 것. (공기업·공공기관 임원→공공기관운영법 추가, 광역시도·지자체→지방공무원법 우선, 교육기관·교육청→교육공무원법 추가 검토, 군·경찰·소방→군인사법·경찰공무원법 적용)`
@@ -442,14 +440,14 @@ async function enhanceGeneralLegalWithGemini(
       "[조문 원문 발췌]",
       articleLines || "(없음)",
       "",
-      "[참고 판례 컨텍스트]",
+      "[국가법령정보 API 검색 결과 — 처분사례 작성 시 반드시 이 데이터 기반으로]",
       precedentLines,
       "",
       "요구사항:",
       "1) 질문 유형 분류: 리스크판정→[VERDICT][WHY][CASE][ACTION][NEXT], 판례·판결문·분석·요약·자세히·상세히 요청→[CASES][INTERP], 신고행동→[GUIDE]. 판례/판결문 요청에는 절대 [VERDICT] 포맷 금지.",
       "2) [VERDICT] 둘째 줄: 리스크 XX% — 법령명 §조항: 의무/요건/기한 1줄.",
       "3) [WHY] 형사처벌/행정처분/징계처분 3개 항목 반드시 모두 출력. '해당 없음' 단독 출력 금지.",
-      "4) [CASE] 처분사례 5건 출력. 각 사례: 기관|연도|사건번호 / 기관·직위 / 사실관계(3-4줄) / 처분결과(형사|행정|징계) / 이 사건 적용(1줄). 생략 절대 금지.",
+      "4) [CASE] 위 [국가법령정보 API 검색 결과]의 판례·결정례 데이터를 기반으로 처분사례 출력. API 데이터에 없는 내용 임의 추가 금지. 각 사례: 기관|연도|사건번호 / 기관·직위 / 사실관계(3-4줄) / 처분결과(형사|행정|징계) / 이 사건 적용(1줄).",
       "5) [ACTION] ✅판정: 신고 불필요 + 상황별 예방 행동 1-2가지(clean.go.kr·'직접 말하지 마십시오' 절대 금지). ❌판정: 행위 유형별 조치(금품수수/이해충돌/갑질/부당지시 구분).",
       "6) [NEXT] 이전 대화 상황(장소·행위·관계·금액) 그대로 유지. 주제 전환 절대 금지.",
       "7) '판례 없음', '찾지 못했습니다', '직접 검색하세요' 절대 출력 금지.",

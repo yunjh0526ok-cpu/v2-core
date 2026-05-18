@@ -359,6 +359,20 @@ export function extractLegalKeywords(userText: string): ExtractedLegalKeywords {
   if (!cleaned) {
     return { lawQuery: "민법", precQuery: "민법", tokens: [] };
   }
+
+  // 도메인 키워드별 국가법령정보 API 최적화 쿼리 매핑 (우선 적용)
+  const domainMap: Array<[RegExp, string, string]> = [
+    [/이해충돌|직접이해관계|사적.*이해|가족.*업체|배우자.*계약|본인.*업체/, "이해충돌방지법 사적이해관계 처분", "이해충돌방지법 사적이해관계 처분"],
+    [/갑질|직장내\s*괴롭힘|심부름|폭언|부당지시|괴롭/, "직장내괴롭힘 공무원 징계", "직장내괴롭힘 공무원 징계"],
+    [/부정청탁|인허가.*부탁|청탁.*금지/, "부정청탁 금지 처분", "부정청탁 금지 처분"],
+    [/청탁금지|금품\s*수수|식사.*받|선물.*받|금품.*공직/, "청탁금지법 금품수수 징계", "청탁금지법 금품수수 징계"],
+  ];
+  for (const [pattern, lawQ, precQ] of domainMap) {
+    if (pattern.test(cleaned)) {
+      return { lawQuery: lawQ, precQuery: precQ, tokens: cleaned.split(/\s+/).slice(0, 8) };
+    }
+  }
+
   const filler =
     /^(저는|저희|제가|혹시|질문입니다|문의드|여쭤|알고\s*싶|궁금합니다|도와)/i;
   let q = cleaned.replace(filler, "").trim() || cleaned;
