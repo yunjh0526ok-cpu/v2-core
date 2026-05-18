@@ -100,7 +100,7 @@ const QUIZZES: PrecedentQuiz[] = [
         statute: "청탁금지법 시행령",
         clause: "제17조 (수수 가액범위)",
         purpose:
-          "음식물 3만원, 선물 5만원, 경조사비 5만원. 다만 상품권 등 유가증권은 선물에서 제외 — 원칙 금지.",
+          "음식물 5만원, 선물 5만원, 경조사비 5만원. 다만 상품권 등 유가증권은 선물에서 제외 — 원칙 금지.",
       },
     ],
     precedents: [
@@ -280,18 +280,18 @@ const QUIZZES: PrecedentQuiz[] = [
     highlights: ["식사", "접대"],
     category: "corruption",
     summary:
-      "직무관련자로부터 음식물은 1인 3만원 이하만 가능. 다만 청탁 목적·반복 수수는 가액과 무관하게 금지.",
+      "직무관련자로부터 음식물은 1인 5만원 이하만 가능. 다만 청탁 목적·반복 수수는 가액과 무관하게 금지.",
     risk: "MEDIUM",
     expectedOutcomes: [
-      { label: "3만원 이하", outcome: "원칙 허용" },
-      { label: "3만원 초과", outcome: "과태료 + 견책" },
+      { label: "5만원 이하", outcome: "원칙 허용" },
+      { label: "5만원 초과", outcome: "과태료 + 견책" },
       { label: "청탁 목적", outcome: "정직 ~ 해임" },
     ],
     lawBasis: [
       {
         statute: "청탁금지법 시행령",
         clause: "제17조 (수수 가액)",
-        purpose: "직무 관련 음식물 1인 3만원 이하.",
+        purpose: "직무 관련 음식물 1인 5만원 이하.",
       },
       {
         statute: "청탁금지법",
@@ -307,7 +307,7 @@ const QUIZZES: PrecedentQuiz[] = [
       },
     ],
     actions: [
-      "가액을 사전 확인 — 1인 기준 3만원 넘으면 회피.",
+      "가액을 사전 확인 — 1인 기준 5만원 넘으면 회피.",
       "자신이 부담한 영수증으로 분할 결제 구조화.",
       "직무 종결 전후 3개월은 접대 일체 회피 권고.",
     ],
