@@ -720,6 +720,10 @@ const KB_ARTICLES: Record<string, LawArticle[]> = {
 };
 
 function buildMockResult(q: string): LawSearchResponse {
+  console.error(
+    "[law-api] BLOCKED: Vercel IP 차단 감지 - mock 데이터로 fallback:",
+    q.slice(0, 30)
+  );
   const matched = LOCAL_KB.filter((g) => g.keywords.test(q)).flatMap((g) => g.items);
   const items =
     matched.length > 0
