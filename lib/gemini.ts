@@ -380,7 +380,8 @@ function stripMarkdown(text: string): string {
 export async function enhanceRiskWithGemini(
   base: RiskAnalysis,
   relatedArticles: LawArticle[] = [],
-  history: Array<{ role: "user" | "model"; content: string }> = []
+  history: Array<{ role: "user" | "model"; content: string }> = [],
+  lawContext?: string
 ): Promise<EnhancedRiskAnalysis> {
   if (!isGeminiEnabled()) {
     return toRulesOnly(base);
@@ -388,6 +389,13 @@ export async function enhanceRiskWithGemini(
 
   const systemPrompt = [
     ANTI_GRAFT_LAW_AMOUNTS,
+    ...(lawContext
+      ? [
+          lawContext,
+          "제공된 법령 원문 외의 조문 번호나 내용을 임의로 생성하지 마라. 확실하지 않은 법령 내용은 반드시 '국가법령정보 확인 필요'라고 명시해라.",
+          "",
+        ]
+      : []),
     "당신은 대한민국 공직자 청렴 전문 법률 AI 'LexGuard'입니다.",
     "사용자는 항상 공직자 또는 공공기관 종사자입니다.",
     "이전 대화 맥락을 반드시 유지하며, 연속 질문은 앞선 상황의 연장선으로 해석하세요.",

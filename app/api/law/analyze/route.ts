@@ -213,7 +213,7 @@ export async function POST(req: Request) {
     : await searchRelevantPrecedents(prompt);
   const publicEthicsQuery = isPublicEthicsQuery(prompt);
   const enhanced = publicEthicsQuery
-    ? await enhanceRiskWithGemini(baseAnalysis, articles, history)
+    ? await enhanceRiskWithGemini(baseAnalysis, articles, history, lawContext)
     : await enhanceGeneralLegalWithGemini(baseAnalysis, articles, precedents, history, userContext, lawContext);
 
   //  ── (4) DB 에 상담 기록 저장 → Hub 대시보드 데이터 소스 ────────
