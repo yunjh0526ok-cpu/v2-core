@@ -15,6 +15,12 @@ import {
   type EnhancedRiskAnalysis,
 } from "@/lib/gemini";
 import { prisma } from "@/lib/prisma";
+import { extractLawKeywords } from "@/lib/lawKeywordExtractor";
+import {
+  fetchLawArticlesForKeywords,
+  fetchRelevantPrecedentSummaries,
+} from "@/lib/lawApiClient";
+import { buildLawContext, formatCitationFooter } from "@/lib/promptBuilder";
 
 export const runtime = "nodejs";
 
@@ -173,7 +179,34 @@ export async function POST(req: Request) {
     }
   }
 
-  //  ── (3) Gemini 강화 (실패 시 rules-only 유지) ───────────────────
+  //  ── (3-a) 국가법령정보 API 파이프라인 ────────────────────────────
+  //  1단계: Gemini 경량 호출로 관련 법령명 추출
+  //  2단계: 각 법령의 관련 조문 실시간 조회
+  //  3단계: 판례 조회
+  //  4단계: Gemini 주입용 컨텍스트 블록 빌드
+  //  전체 실패 시 graceful fallback — 기존 Gemini 단독 응답으로 자동 전환
+  let lawContext = "";
+  let lawCitations: string[] = [];
+  let lawApiSuccess = false;
+  try {
+    const [extractedLaws, apiPrecedents] = await Promise.all([
+      extractLawKeywords(prompt),
+      fetchRelevantPrecedentSummaries(prompt.slice(0, 120)),
+    ]);
+    const lawResults = await Promise.all(
+      extractedLaws.slice(0, 3).map((l) =>
+        fetchLawArticlesForKeywords(l.lawName, l.keywords)
+      )
+    );
+    const built = buildLawContext(lawResults, apiPrecedents);
+    lawContext = built.contextBlock;
+    lawCitations = built.citations;
+    lawApiSuccess = built.apiSuccess;
+  } catch (e) {
+    console.warn("[api/law/analyze] law API pipeline failed:", (e as Error).message);
+  }
+
+  //  ── (3-b) Gemini 강화 (실패 시 rules-only 유지) ─────────────────
   // clientPrecedents 제공 시 서버측 law.go.kr 판례 검색 스킵 (브라우저 IP 우회)
   const precedents = clientPrecedents && clientPrecedents.length > 0
     ? clientPrecedents
@@ -181,7 +214,7 @@ export async function POST(req: Request) {
   const publicEthicsQuery = isPublicEthicsQuery(prompt);
   const enhanced = publicEthicsQuery
     ? await enhanceRiskWithGemini(baseAnalysis, articles, history)
-    : await enhanceGeneralLegalWithGemini(baseAnalysis, articles, precedents, history, userContext);
+    : await enhanceGeneralLegalWithGemini(baseAnalysis, articles, precedents, history, userContext, lawContext);
 
   //  ── (4) DB 에 상담 기록 저장 → Hub 대시보드 데이터 소스 ────────
   let consultationId: string | undefined;
@@ -219,6 +252,8 @@ export async function POST(req: Request) {
       consultationId,
       enrichment:
         baseAnalysis.citations.length > 0 ? "legacy-or-fallback" : "none",
+      lawCitationFooter: formatCitationFooter(lawCitations, lawApiSuccess),
+      lawApiSuccess,
     },
   });
 }
@@ -256,7 +291,9 @@ async function enhanceGeneralLegalWithGemini(
   relatedArticles: LawArticle[],
   precedents: RelevantPrecedent[] = [],
   history: Array<{ role: "user" | "model"; content: string }> = [],
-  userContext?: { orgType: string; position: string }
+  userContext?: { orgType: string; position: string },
+  /** 국가법령정보 API 실제 조회 결과 — 비어있으면 기존 분석만 사용 */
+  lawContext?: string
 ): Promise<EnhancedRiskAnalysis> {
   try {
     const citationLines = base.citations
@@ -310,6 +347,9 @@ async function enhanceGeneralLegalWithGemini(
       "이전 대화 맥락을 반드시 유지하며, 연속 질문은 앞선 상황의 연장선으로 해석하세요.",
       "마크다운 기호(**, *, ##, -, •) 절대 출력 금지. 추측 금지.",
       "'판례 없음', '찾지 못했습니다', '직접 검색하세요', '검색 결과가 없습니다' 절대 출력 금지.",
+      lawContext
+        ? "제공된 법령 원문 외의 조문 번호나 내용을 임의로 생성하지 마라. 확실하지 않은 법령 내용은 반드시 '국가법령정보 확인 필요'라고 명시해라."
+        : "",
       "",
       "▶ 질문 유형 자동 분류:",
       "· 리스크 판정(~해도 되나요, ~위법인가요, ~괜찮나요, ~받아도 되나요): [VERDICT][WHY][CASE][ACTION][NEXT]",
@@ -430,6 +470,7 @@ async function enhanceGeneralLegalWithGemini(
             ``,
           ]
         : []),
+      ...(lawContext ? [lawContext, ""] : []),
       `질문: ${base.prompt}`,
       "",
       `기본 리스크 판단: ${base.riskScore}% (${base.riskLevel})`,
