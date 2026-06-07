@@ -118,20 +118,9 @@ export async function POST(req: Request) {
     /* keep empty — fallback below */
   }
 
-  const top3 = precedents.slice(0, 3);
-
-  // 판례 없음 → 가짜 데이터 대신 안내 메시지 반환
-  if (top3.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      data: {
-        items: [],
-        advice: "",
-        totalFound: 0,
-        noResults: true,
-      },
-    });
-  }
+  // 판례 없을 경우 FALLBACK_PRECEDENTS 사용 (live API 차단 시 대비)
+  const usingFallback = precedents.length === 0;
+  const top3 = (usingFallback ? FALLBACK_PRECEDENTS : precedents).slice(0, 3);
 
   // 2. Gemini 유사도·연결포인트 분석
   const precedentBlock = top3
@@ -199,8 +188,11 @@ export async function POST(req: Request) {
       items,
       advice:
         advice ||
-        "관련 판례를 참고해 방어 전략을 수립하고, 필요 시 전문 법률가의 검토를 받으세요.",
+        (usingFallback
+          ? "실시간 판례 검색이 일시 제한되어 유사 유형 참고 판례를 제공했습니다. 전문 법률가의 검토를 권장합니다."
+          : "관련 판례를 참고해 방어 전략을 수립하고, 필요 시 전문 법률가의 검토를 받으세요."),
       totalFound: precedents.length,
+      isFallback: usingFallback,
     },
   });
 }
