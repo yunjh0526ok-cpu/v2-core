@@ -941,7 +941,7 @@ function extractKrwAmount(text: string): number {
  */
 function check3510(sig: Signals): { delta: number; detail: string } | null {
   if (sig.cheongtakContext === "none" || sig.krw === 0) return null;
-  const t = { meal: 50_000, gift: 50_000, ceremony: 50_000 }[sig.cheongtakContext]; // 2024.1.1 개정: 음식물 5만원
+  const t = { meal: 50_000, gift: 50_000, ceremony: 50_000 }[sig.cheongtakContext]; // 2024.1.1 개정: 음식물 5만원 / 2024.8.27 시행령 확정
   const krw = sig.krw;
   const ratio = krw / t;
   if (ratio <= 0.5) return { delta: 8, detail: `금액 ${formatWon(krw)} — 청탁금지법 상한(${formatWon(t)}) 이하, 단순 주의 수준` };
