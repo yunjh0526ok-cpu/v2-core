@@ -1,0 +1,43 @@
+name: Sync Law Data to DB
+
+on:
+  schedule:
+    # 매일 KST 03:00 (UTC 18:00 전날)
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+    # Actions 탭에서 수동 실행 가능
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Apply DB schema (safe push)
+        run: npx prisma db push --accept-data-loss
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_UNPOOLED }}
+
+      - name: Run sync script
+        run: npx tsx scripts/sync-law-data.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          LAW_API_KEY: ${{ secrets.LAW_API_KEY }}
