@@ -1,19 +1,22 @@
 /**
  * lawApiClient.ts
- * 국가법령정보 Open API 연동 — Edge Function 프록시(/api/law/proxy)를 경유한 클라이언트.
+ * 국가법령정보 Open API 연동 — DB 캐시 우선, 미스 시 Edge 프록시 fallback.
  *
- * ▶ 문제: Vercel 서버리스 함수 IP는 law.go.kr에서 차단됨
- * ▶ 해결: /api/law/proxy (Edge Function, Cloudflare Workers 대역)를 거쳐 XML 취득
- *
- * 환경변수:
- *   VERCEL_URL         - Vercel이 자동 주입하는 배포 URL (https:// 없음)
- *   NEXT_PUBLIC_BASE_URL - 로컬 오버라이드용 (http://localhost:3000 등)
+ * 흐름:
+ *   1. DB 캐시 조회 (lawDbClient) — 가장 빠름, Vercel IP 차단 무관
+ *   2. DB miss → /api/law/proxy (Edge Function) 경유 law.go.kr 직접 호출
+ *   3. 둘 다 실패 → fallback: 빈 배열 반환 (analyzeRisk 로컬 KB 사용)
  */
 
 import { XMLParser } from "fast-xml-parser";
 import type { LawArticle } from "@/lib/law-api";
+import {
+  getLawArticlesFromDb,
+  getPrecedentsFromDb,
+  getRelevantPrecedentsFromDb,
+} from "@/lib/lawDbClient";
 
-// ── XML 파서 (law-api.ts 와 동일한 설정) ──────────────────────────────────
+// ── XML 파서 ──────────────────────────────────────────────────────────────
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
@@ -25,7 +28,7 @@ const xmlParser = new XMLParser({
   htmlEntities: true,
 });
 
-// ── 서버 메모리 캐시 (프로세스 수명 내 재호출 방지) ──────────────────────
+// ── 서버 메모리 캐시 (DB 미스 후 프록시 결과 재사용) ─────────────────────
 const articleCache = new Map<
   string,
   { articles: LawArticle[]; source: "api" | "fallback" }
@@ -35,37 +38,26 @@ const precCache = new Map<string, Array<{ caseNo: string; summary: string }>>();
 export type LawFetchResult = {
   lawName: string;
   articles: LawArticle[];
-  /** api: 실제 API 성공 / fallback: API 미응답 */
-  source: "api" | "fallback";
+  source: "db" | "api" | "fallback";
 };
 
 // ── 내부 프록시 Base URL ──────────────────────────────────────────────────
 function getInternalBase(): string {
-  // NEXT_PUBLIC_BASE_URL 최우선 (명시적 override)
   if (process.env.NEXT_PUBLIC_BASE_URL) {
     return process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, "");
   }
-  // Vercel 배포 환경
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`;
   }
-  // 로컬 개발 환경 (Next.js 기본 포트)
   return "http://localhost:3000";
 }
 
-/**
- * /api/law/proxy 를 통해 law.go.kr XML을 취득한다.
- * Edge Function이 Cloudflare Workers 대역 IP로 실행되어 차단을 우회한다.
- */
 async function proxyFetch(params: Record<string, string>): Promise<string> {
   const qs = new URLSearchParams(params).toString();
   const url = `${getInternalBase()}/api/law/proxy?${qs}`;
-
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`proxy ${res.status}: ${await res.text().catch(() => "")}`);
-
   const text = await res.text();
-  // proxy가 JSON 에러를 반환한 경우 (503, 502 등)
   if (text.trim().startsWith("{")) {
     const parsed = JSON.parse(text) as { error?: string };
     throw new Error(parsed.error ?? "proxy returned JSON error");
@@ -73,23 +65,18 @@ async function proxyFetch(params: Record<string, string>): Promise<string> {
   return text;
 }
 
-// ── 법령 검색 응답 정규화 ─────────────────────────────────────────────────
-type LawSearchItem = {
-  id: string;
-  mst?: string;
-  name: string;
-};
+// ── 응답 정규화 ───────────────────────────────────────────────────────────
+type LawSearchItem = { id: string; mst?: string; name: string };
 
 function parseLawSearchXml(xml: string): LawSearchItem[] {
   if (!/^<\??xml|^<LawSearch/i.test(xml.trim())) {
-    throw new Error("non-XML response from proxy (possible auth/quota issue)");
+    throw new Error("non-XML response from proxy");
   }
   const root =
     (xmlParser.parse(xml) as { LawSearch?: Record<string, unknown> }).LawSearch ?? {};
   const rawList = Array.isArray(root.law)
     ? (root.law as Record<string, unknown>[])
     : [];
-
   return rawList.map((r, i) => ({
     id: String(r["법령ID"] ?? r["법령일련번호"] ?? `l-${i}`),
     mst: r["법령MST"] ? String(r["법령MST"]) : undefined,
@@ -97,8 +84,10 @@ function parseLawSearchXml(xml: string): LawSearchItem[] {
   }));
 }
 
-// ── 법령 조문 응답 정규화 ─────────────────────────────────────────────────
-function parseLawDetailXml(xml: string, fallbackName: string): { name: string; articles: LawArticle[] } {
+function parseLawDetailXml(
+  xml: string,
+  fallbackName: string
+): { name: string; articles: LawArticle[] } {
   if (!/^<\??xml|^<법령/i.test(xml.trim())) {
     throw new Error("non-XML detail response from proxy");
   }
@@ -106,12 +95,10 @@ function parseLawDetailXml(xml: string, fallbackName: string): { name: string; a
     (xmlParser.parse(xml) as { 법령?: Record<string, unknown> }).법령 ?? {};
   const basic = (law.기본정보 as Record<string, unknown>) ?? {};
   const name = String(basic["법령명_한글"] ?? basic["법령명한글"] ?? fallbackName);
-
   const jomun = (law.조문 as Record<string, unknown>) ?? {};
   const units = Array.isArray(jomun.조문단위)
     ? (jomun.조문단위 as Record<string, unknown>[])
     : [];
-
   const articles: LawArticle[] = units
     .map((u) => {
       const no = String(u["조문번호"] ?? "");
@@ -128,11 +115,9 @@ function parseLawDetailXml(xml: string, fallbackName: string): { name: string; a
       return { no, sub, title, content };
     })
     .filter((a) => a.content);
-
   return { name, articles };
 }
 
-// ── 판례 검색 응답 정규화 ─────────────────────────────────────────────────
 function parsePrecSearchXml(xml: string): Array<{ caseNo: string; summary: string }> {
   if (!/^<\??xml|^<PrecSearch/i.test(xml.trim())) {
     throw new Error("non-XML precedent response from proxy");
@@ -142,7 +127,6 @@ function parsePrecSearchXml(xml: string): Array<{ caseNo: string; summary: strin
   const rawList = Array.isArray(root.prec)
     ? (root.prec as Record<string, unknown>[])
     : [];
-
   return rawList.slice(0, 3).map((r) => ({
     caseNo: String(r["사건번호"] ?? "사건번호 미상"),
     summary: String(r["판결요지"] ?? r["판시사항"] ?? r["판례내용"] ?? "")
@@ -154,16 +138,22 @@ function parsePrecSearchXml(xml: string): Array<{ caseNo: string; summary: strin
 // ── 공개 API ──────────────────────────────────────────────────────────────
 
 /**
- * 법령명 + 키워드로 관련 조문만 필터링해서 반환.
- * 동일 요청은 캐시에서 즉시 반환.
- * 프록시(/api/law/proxy)를 경유하여 Vercel IP 차단을 우회한다.
+ * 법령명 + 키워드로 관련 조문 반환.
+ * 우선순위: DB 캐시 → Edge 프록시 → fallback(빈 배열)
  */
 export async function fetchLawArticlesForKeywords(
   lawName: string,
   keywords: string[] = []
 ): Promise<LawFetchResult> {
-  const cacheKey = `${lawName}::${keywords.slice(0, 4).join(",")}`;
+  // 1. DB 캐시 조회
+  const dbResult = await getLawArticlesFromDb(lawName, keywords);
+  if (dbResult.articles.length > 0) {
+    console.log(`[lawApiClient] ✅ DB 캐시 히트: "${dbResult.lawName}" (${dbResult.articles.length}개)`);
+    return { lawName: dbResult.lawName, articles: dbResult.articles, source: "db" };
+  }
 
+  // 2. DB miss → 프록시 fallback
+  const cacheKey = `${lawName}::${keywords.slice(0, 4).join(",")}`;
   if (articleCache.has(cacheKey)) {
     const cached = articleCache.get(cacheKey)!;
     return { lawName, ...cached };
@@ -178,84 +168,73 @@ export async function fetchLawArticlesForKeywords(
   };
 
   try {
-    // 1단계: 법령 검색
-    const searchXml = await proxyFetch({
-      target: "law",
-      query: lawName,
-      display: "10",
-      type: "XML",
-    });
+    const searchXml = await proxyFetch({ target: "law", query: lawName, display: "10", type: "XML" });
     const searchItems = parseLawSearchXml(searchXml);
     const first = searchItems[0];
-    if (!first) {
-      console.warn(`[lawApiClient] 검색 결과 없음: "${lawName}"`);
-      return store([], "fallback");
-    }
+    if (!first) return store([], "fallback");
 
-    // 2단계: 조문 조회
-    const idParams: Record<string, string> = {
-      target: "law",
-      type: "XML",
-    };
-    if (first.mst) {
-      idParams["MST"] = first.mst;
-    } else {
-      idParams["ID"] = first.id;
-    }
+    const idParams: Record<string, string> = { target: "law", type: "XML" };
+    if (first.mst) idParams["MST"] = first.mst;
+    else idParams["ID"] = first.id;
+
     const detailXml = await proxyFetch(idParams);
     const { name: resolvedName, articles: allArticles } = parseLawDetailXml(detailXml, lawName);
-    console.log(
-      `[lawApiClient] ✅ 법령 원문 취득: "${resolvedName}" (${allArticles.length}개 조문)`
-    );
+    console.log(`[lawApiClient] ✅ 프록시 취득: "${resolvedName}" (${allArticles.length}개 조문)`);
 
-    // 3단계: 키워드 필터링
     let articles = allArticles;
     if (keywords.length > 0) {
       const filtered = allArticles.filter((a) => {
         const text = `${a.title} ${a.content}`.toLowerCase();
         return keywords.some((k) => text.includes(k.toLowerCase()));
       });
-      articles =
-        filtered.length > 0 ? filtered.slice(0, 5) : allArticles.slice(0, 3);
+      articles = filtered.length > 0 ? filtered.slice(0, 5) : allArticles.slice(0, 3);
     } else {
       articles = allArticles.slice(0, 5);
     }
-
     return store(articles, articles.length > 0 ? "api" : "fallback");
   } catch (err) {
-    console.error(
-      "[lawApiClient] fetchLawArticlesForKeywords proxy 오류:",
-      (err as Error).message
-    );
+    console.warn("[lawApiClient] 프록시 오류 (DB 미스):", (err as Error).message);
     return store([], "fallback");
   }
 }
 
 /**
- * 키워드로 판례 요약 목록 조회 (최대 3건).
- * 캐시 적중 시 API 재호출 없음.
- * 프록시(/api/law/proxy)를 경유하여 Vercel IP 차단을 우회한다.
+ * 키워드로 판례 요약 목록 조회.
+ * 우선순위: DB 캐시 → Edge 프록시 → fallback(빈 배열)
  */
 export async function fetchRelevantPrecedentSummaries(
   keyword: string
 ): Promise<Array<{ caseNo: string; summary: string }>> {
+  // 1. DB 캐시
+  const dbPrecs = await getPrecedentsFromDb(keyword, 5);
+  if (dbPrecs.length > 0) {
+    console.log(`[lawApiClient] ✅ DB 판례 히트: "${keyword}" (${dbPrecs.length}건)`);
+    return dbPrecs.map((p) => ({
+      caseNo: p.caseNo,
+      summary: p.gist?.slice(0, 200) ?? p.title,
+    }));
+  }
+
+  // 2. 사용자 질문 기반 DB 판례 검색
+  const relevant = await getRelevantPrecedentsFromDb(keyword, 5);
+  if (relevant.length > 0) {
+    console.log(`[lawApiClient] ✅ DB 판례 키워드 매칭: ${relevant.length}건`);
+    return relevant.map((p) => ({
+      caseNo: p.caseNo,
+      summary: p.gist?.slice(0, 200) ?? p.title,
+    }));
+  }
+
+  // 3. 프록시 fallback
   if (precCache.has(keyword)) return precCache.get(keyword)!;
 
   try {
-    const xml = await proxyFetch({
-      target: "prec",
-      query: keyword,
-      display: "3",
-      type: "XML",
-    });
+    const xml = await proxyFetch({ target: "prec", query: keyword, display: "3", type: "XML" });
     const result = parsePrecSearchXml(xml);
     precCache.set(keyword, result);
     return result;
   } catch (err) {
-    console.error(
-      "[lawApiClient] fetchRelevantPrecedentSummaries proxy 오류:",
-      (err as Error).message
-    );
+    console.warn("[lawApiClient] 판례 프록시 오류:", (err as Error).message);
     precCache.set(keyword, []);
     return [];
   }
