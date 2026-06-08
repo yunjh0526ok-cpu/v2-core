@@ -101,3 +101,38 @@ model Story {
   @@index([category])
   @@index([createdAt])
 }
+
+/// 법령 조문 캐시 — GitHub Actions 크론잡으로 매일 새벽 업데이트
+model LawArticleCache {
+  id           String   @id @default(cuid())
+  lawName      String
+  lawId        String?
+  lawMst       String?
+  articleNo    String
+  articleSub   String   @default("")
+  articleTitle String   @default("")
+  content      String
+  fetchedAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([lawName, articleNo, articleSub])
+  @@index([lawName])
+  @@index([updatedAt])
+}
+
+/// 판례 캐시 — 키워드별 상위 판례 저장 (GitHub Actions 매일 업데이트)
+model PrecedentCache {
+  id        String   @id @default(cuid())
+  keyword   String
+  caseNo    String
+  court     String?
+  date      String?
+  title     String
+  gist      String?
+  fetchedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([keyword, caseNo])
+  @@index([keyword])
+  @@index([fetchedAt])
+}
